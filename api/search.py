@@ -154,6 +154,33 @@ def get_song_details(video_id: str) -> dict:
     }
 
 
+def get_recommendations(video_id: str, limit: int = 25) -> list[dict]:
+    """Get YouTube Music autoplay/recommended tracks for a given videoId."""
+    try:
+        watch = _get_ytmusic().get_watch_playlist(videoId=video_id, limit=limit)
+    except Exception:
+        return []
+    tracks = []
+    for t in watch.get("tracks", []):
+        artists = t.get("artists", [])
+        album = t.get("album", {}) or {}
+        thumb = _thumb_url(t.get("thumbnails", []))
+        tracks.append({
+            "id": t.get("videoId", ""),
+            "title": t.get("title", ""),
+            "artist": ", ".join(a.get("name", "") for a in artists),
+            "artist_id": artists[0].get("id", "") if artists else "",
+            "album": album.get("name", ""),
+            "album_id": album.get("id", ""),
+            "duration": t.get("duration", ""),
+            "duration_seconds": t.get("duration_seconds", 0),
+            "thumbnail": thumb,
+            "url": f"https://music.youtube.com/watch?v={t.get('videoId', '')}",
+            "isExplicit": t.get("isExplicit", False),
+        })
+    return tracks
+
+
 def get_album(browse_id: str) -> dict:
     yt = _get_ytmusic()
     album = yt.get_album(browse_id)

@@ -12,6 +12,8 @@ let queue = [];
 let currentSong = null;
 let queueIndex = -1;
 let searchCache = {};
+let recommendations = [];
+let upNextOpen = false;
 
 /* === Sleep Timer === */
 let sleepTimerTimeout = null;
@@ -245,6 +247,8 @@ function playSong(index) {
         updatePlayIcon();
         document.getElementById("playerArtist").textContent = "Failed to load - click Play to retry";
     });
+
+    fetchRecommendations(song.id);
 }
 
 function showCleanNote(msg) {
@@ -307,7 +311,101 @@ function prevTrack() {
 }
 
 function nextTrack() {
-    if (queueIndex < queue.length - 1) playSong(queueIndex + 1);
+    if (queueIndex < queue.length - 1) {
+        playSong(queueIndex + 1);
+    } else if (recommendations.length > 0) {
+        playRecommendation(0);
+    }
+}
+
+async function fetchRecommendations(videoId) {
+    if (!videoId) return;
+    try {
+        const resp = await fetch(`/api/recommendations?videoId=${encodeURIComponent(videoId)}&limit=25`);
+        const data = await resp.json();
+        recommendations = data.tracks || [];
+        if (upNextOpen) renderUpNext();
+    } catch (err) {
+        console.error("Recommendations failed:", err);
+        recommendations = [];
+    }
+}
+
+function renderUpNext() {
+    const list = document.getElementById("upNextList");
+    if (!recommendations.length) {
+        list.innerHTML = `<div class="empty-state">No recommendations</div>`;
+        return;
+    }
+    list.innerHTML = recommendations.map((s, i) => `
+        <div class="song-row" onclick="playRecommendation(${i})">
+            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <div class="info">
+                <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+            </div>
+            <div class="duration">${s.duration || ''}</div>
+        </div>
+    `).join("");
+}
+
+function playRecommendation(index) {
+    if (index < 0 || index >= recommendations.length) return;
+    const song = recommendations[index];
+    const quality = document.getElementById("qualitySelect").value;
+    const clean = document.getElementById("cleanToggle").checked;
+
+    queue = recommendations;
+    queueIndex = index;
+    currentSong = song;
+
+    document.getElementById("playerTitle").textContent = song.title;
+    document.getElementById("playerArtist").textContent = song.artist || "Loading...";
+    document.getElementById("playerThumb").src = song.thumbnail || '';
+    document.getElementById("playerAlbumName").textContent = song.album || '';
+    document.getElementById("playerAlbumName").style.pointerEvents = song.album_id ? "cursor" : "default";
+    playerDiv.classList.remove("hidden");
+    document.getElementById("playPauseBtn").classList.add("buffering");
+    hideCleanNote();
+    closeKebabMenu();
+
+    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.load();
+
+    if (quality === "saavn") {
+        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
+    } else if (clean) {
+        fetch(`/api/sponsorblock/${song.id}/segments`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data && data.total_skipped > 0) {
+                    showCleanNote(`Clean audio: removed ${fmtTime(data.total_skipped)} of non-music content`);
+                }
+            })
+            .catch(() => {});
+    }
+
+    audio.play().then(() => {
+        updatePlayIcon();
+        document.getElementById("playerArtist").textContent = song.artist;
+    }).catch(err => {
+        console.error("Play failed:", err);
+        updatePlayIcon();
+        document.getElementById("playerArtist").textContent = "Failed to load - click Play to retry";
+    });
+
+    fetchRecommendations(song.id);
+}
+
+function toggleUpNext() {
+    upNextOpen = !upNextOpen;
+    const panel = document.getElementById("upNextPanel");
+    if (upNextOpen) {
+        renderUpNext();
+        panel.classList.remove("hidden");
+    } else {
+        panel.classList.add("hidden");
+    }
 }
 
 function skipBackward() {
@@ -336,6 +434,13 @@ document.addEventListener("click", (e) => {
     if (menu && !menu.classList.contains("hidden")) {
         if (!menu.contains(e.target) && !btn.contains(e.target)) {
             menu.classList.add("hidden");
+        }
+    }
+    const upNextPanel = document.getElementById("upNextPanel");
+    const upNextBtn = document.getElementById("upNextBtn");
+    if (upNextPanel && !upNextPanel.classList.contains("hidden")) {
+        if (!upNextPanel.contains(e.target) && !upNextBtn.contains(e.target)) {
+            toggleUpNext();
         }
     }
 });

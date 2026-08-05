@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.search import search_songs, search_artists, search_albums, search_all
-from api.search import get_artist, get_album, get_song_details
+from api.search import get_artist, get_album, get_song_details, get_recommendations
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
                             active_downloads, get_saavn_id,
@@ -61,6 +61,16 @@ def api_artist(browse_id: str):
 def api_album(browse_id: str):
     try:
         return get_album(browse_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/recommendations")
+def api_recommendations(videoId: str = Query(..., min_length=1),
+                         limit: int = Query(25, ge=1, le=50)):
+    try:
+        tracks = get_recommendations(videoId, limit)
+        return {"tracks": tracks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
