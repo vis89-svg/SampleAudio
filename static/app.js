@@ -323,7 +323,7 @@ async function fetchRecommendations(videoId) {
     try {
         const resp = await fetch(`/api/recommendations?videoId=${encodeURIComponent(videoId)}&limit=25`);
         const data = await resp.json();
-        recommendations = data.tracks || [];
+        recommendations = (data.tracks || []).filter(t => t.id !== currentSong?.id);
         if (upNextOpen) renderUpNext();
     } catch (err) {
         console.error("Recommendations failed:", err);
