@@ -208,7 +208,7 @@ function playSong(index) {
     document.getElementById("playerArtist").textContent = "Loading...";
     document.getElementById("playerThumb").src = `/api/thumbnail/${song.id}`;
     playerDiv.classList.remove("hidden");
-    document.getElementById("playPauseBtn").textContent = "Loading";
+    document.getElementById("playPauseBtn").classList.add("buffering");
     hideCleanNote();
 
     audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
@@ -228,11 +228,11 @@ function playSong(index) {
     }
 
     audio.play().then(() => {
-        document.getElementById("playPauseBtn").textContent = "Pause";
+        updatePlayIcon();
         document.getElementById("playerArtist").textContent = song.artist;
     }).catch(err => {
         console.error("Play failed:", err);
-        document.getElementById("playPauseBtn").textContent = "Play";
+        updatePlayIcon();
         document.getElementById("playerArtist").textContent = "Failed to load - click Play to retry";
     });
 }
@@ -254,16 +254,29 @@ function hideCleanNote() {
     if (note) note.classList.remove("show");
 }
 
+function updatePlayIcon() {
+    const playIcon = document.getElementById("playIcon");
+    const pauseIcon = document.getElementById("pauseIcon");
+    if (!playIcon || !pauseIcon) return;
+    if (audio.paused) {
+        playIcon.classList.remove("hidden");
+        pauseIcon.classList.add("hidden");
+    } else {
+        playIcon.classList.add("hidden");
+        pauseIcon.classList.remove("hidden");
+    }
+}
+
 function togglePlay() {
     if (audio.paused) {
         audio.play().then(() => {
-            document.getElementById("playPauseBtn").textContent = "Pause";
+            updatePlayIcon();
         }).catch(err => {
             console.error("Play failed:", err);
         });
     } else {
         audio.pause();
-        document.getElementById("playPauseBtn").textContent = "Play";
+        updatePlayIcon();
     }
 }
 
@@ -273,6 +286,14 @@ function prevTrack() {
 
 function nextTrack() {
     if (queueIndex < queue.length - 1) playSong(queueIndex + 1);
+}
+
+function skipBackward() {
+    audio.currentTime = Math.max(0, audio.currentTime - 10);
+}
+
+function skipForward() {
+    audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10);
 }
 
 audio.addEventListener("timeupdate", () => {
@@ -287,21 +308,24 @@ audio.addEventListener("timeupdate", () => {
 audio.addEventListener("loadedmetadata", () => {
     if (queueIndex >= 0 && queue[queueIndex]) {
         document.getElementById("playerArtist").textContent = queue[queueIndex].artist;
-        document.getElementById("playPauseBtn").textContent = "Pause";
+        updatePlayIcon();
     }
 });
 
 audio.addEventListener("waiting", () => {
-    document.getElementById("playPauseBtn").textContent = "Buffering";
+    const btn = document.getElementById("playPauseBtn");
+    if (btn) btn.classList.add("buffering");
 });
 
 audio.addEventListener("playing", () => {
-    document.getElementById("playPauseBtn").textContent = "Pause";
+    const btn = document.getElementById("playPauseBtn");
+    if (btn) btn.classList.remove("buffering");
+    updatePlayIcon();
 });
 
 audio.addEventListener("error", (e) => {
     console.error("Audio error:", e);
-    document.getElementById("playPauseBtn").textContent = "Play";
+    updatePlayIcon();
     document.getElementById("playerArtist").textContent = "Error - click Play to retry";
 });
 
@@ -340,3 +364,31 @@ function showLoading() {
     artistView.classList.add("hidden");
     albumView.classList.add("hidden");
 }
+
+document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    switch (e.key) {
+        case " ":
+            e.preventDefault();
+            togglePlay();
+            break;
+        case "ArrowLeft":
+            e.preventDefault();
+            skipBackward();
+            break;
+        case "ArrowRight":
+            e.preventDefault();
+            skipForward();
+            break;
+        case "ArrowUp":
+            e.preventDefault();
+            audio.volume = Math.min(1, audio.volume + 0.05);
+            document.getElementById("volumeBar").value = audio.volume * 100;
+            break;
+        case "ArrowDown":
+            e.preventDefault();
+            audio.volume = Math.max(0, audio.volume - 0.05);
+            document.getElementById("volumeBar").value = audio.volume * 100;
+            break;
+    }
+});
