@@ -164,7 +164,7 @@ def get_recommendations(video_id: str, limit: int = 25) -> list[dict]:
     for t in watch.get("tracks", []):
         artists = t.get("artists", [])
         album = t.get("album", {}) or {}
-        thumb = _thumb_url(t.get("thumbnails", []))
+        thumb = _thumb_url(t.get("thumbnail", []))
         tracks.append({
             "id": t.get("videoId", ""),
             "title": t.get("title", ""),
@@ -184,9 +184,11 @@ def get_recommendations(video_id: str, limit: int = 25) -> list[dict]:
 def get_album(browse_id: str) -> dict:
     yt = _get_ytmusic()
     album = yt.get_album(browse_id)
+    album_thumb = _thumb_url(album.get("thumbnails", []))
     tracks = []
     for t in album.get("tracks", []):
         artists_list = t.get("artists", [])
+        track_thumb = _thumb_url(t.get("thumbnails", []))
         tracks.append({
             "id": t.get("videoId", ""),
             "title": t.get("title", ""),
@@ -195,7 +197,7 @@ def get_album(browse_id: str) -> dict:
             "duration": t.get("duration", ""),
             "duration_seconds": t.get("duration_seconds", 0),
             "number": t.get("trackNumber", 0),
-            "thumbnail": _thumb_url(t.get("thumbnails", [])),
+            "thumbnail": track_thumb or album_thumb,
             "url": f"https://music.youtube.com/watch?v={t.get('videoId', '')}",
         })
 
@@ -204,6 +206,6 @@ def get_album(browse_id: str) -> dict:
         "title": album.get("title", ""),
         "artist": album.get("artist", ""),
         "year": album.get("year", ""),
-        "thumbnail": _thumb_url(album.get("thumbnails", [])),
+        "thumbnail": album_thumb,
         "tracks": tracks,
     }
