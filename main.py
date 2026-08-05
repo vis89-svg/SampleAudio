@@ -205,6 +205,28 @@ def api_stream(video_id: str, quality: str = Query("normal"),
                     file_path = download_audio(video_id)
                 event = threading.Event()
                 event.set()
+            elif quality == "saavn":
+                # Explicit JioSaavn 320kbps: always clean, no chatter, no trim.
+                # If JioSaavn has no match, silently fall back to YouTube audio.
+                saavn = _try_jiosaavn_stream(video_id)
+                if saavn:
+                    file_path, event = saavn
+                else:
+                    segments = get_skip_segments(video_id) if clean else []
+                    active = start_streaming_download(video_id)
+                    event = active["event"]
+                    deadline = time.time() + STREAM_WAIT_TIMEOUT
+                    while time.time() < deadline:
+                        file_path = find_audio_file(video_id)
+                        if file_path or event.is_set():
+                            break
+                        time.sleep(STREAM_POLL_INTERVAL)
+                    if not file_path:
+                        raise HTTPException(status_code=500, detail="Download failed to start")
+                    if event.is_set():
+                        _normalize_in_background(file_path, segments)
+                    else:
+                        _normalize_when_done(file_path, event, segments)
             else:
                 # Check SponsorBlock first: if this song has significant
                 # non-music content, wait for the full download and serve the

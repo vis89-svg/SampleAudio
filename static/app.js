@@ -214,7 +214,9 @@ function playSong(index) {
     audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
     audio.load();
 
-    if (clean) {
+    if (quality === "saavn") {
+        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
+    } else if (clean) {
         fetch(`/api/sponsorblock/${song.id}/segments`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
