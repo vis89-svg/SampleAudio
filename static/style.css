@@ -182,6 +182,7 @@ header h1 {
     object-fit: cover;
     border-radius: 6px;
     margin-bottom: 10px;
+    background: #282828;
 }
 
 .artist-card img {
@@ -230,6 +231,8 @@ header h1 {
     height: 44px;
     border-radius: 4px;
     object-fit: cover;
+    background: #282828;
+    flex-shrink: 0;
 }
 
 .song-row .info {
@@ -272,6 +275,7 @@ header h1 {
     height: 180px;
     border-radius: 50%;
     object-fit: cover;
+    background: #282828;
 }
 
 .artist-header h2 {
@@ -299,6 +303,7 @@ header h1 {
     color: #fff;
 }
 
+/* === Player Bar === */
 .player {
     position: fixed;
     bottom: 0;
@@ -309,7 +314,7 @@ header h1 {
     padding: 12px 24px;
     display: flex;
     align-items: center;
-    gap: 20px;
+    gap: 16px;
     z-index: 100;
 }
 
@@ -317,8 +322,9 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 14px;
-    min-width: 200px;
+    min-width: 180px;
     width: 28%;
+    flex-shrink: 0;
 }
 
 .player-info img {
@@ -332,7 +338,7 @@ header h1 {
 
 .player-title {
     font-weight: 600;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -340,10 +346,98 @@ header h1 {
 }
 
 .player-artist {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+}
+
+.player-album {
+    font-size: 0.7rem;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+    margin-top: 2px;
+}
+
+.player-album[style*="cursor"] {
     color: #888;
 }
 
+.player-album[style*="cursor"]:hover {
+    color: #1db954;
+    text-decoration: underline;
+}
+
+/* === Kebab Menu === */
+.player-kebab {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.kebab-btn {
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+}
+
+.kebab-btn:hover {
+    color: #fff;
+    background: #282828;
+}
+
+.kebab-menu {
+    position: absolute;
+    bottom: 44px;
+    left: 0;
+    background: #282828;
+    border-radius: 8px;
+    padding: 6px 0;
+    min-width: 180px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    z-index: 150;
+}
+
+.kebab-menu button {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    background: transparent;
+    color: #e0e0e0;
+    border: none;
+    text-align: left;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.kebab-menu button:hover {
+    background: #333;
+}
+
+.kebab-menu .cancel-btn {
+    color: #ff6b6b;
+}
+
+.kebab-sep {
+    height: 1px;
+    background: #333;
+    margin: 4px 0;
+}
+
+/* === Player Center === */
 .player-center {
     flex: 1;
     display: flex;
@@ -453,11 +547,29 @@ header h1 {
     opacity: 1;
 }
 
+/* === Player Right === */
+.player-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.sleep-badge {
+    background: #1db954;
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
 .player-volume {
     display: flex;
     align-items: center;
     gap: 8px;
-    min-width: 140px;
+    min-width: 120px;
 }
 
 .player-volume input[type="range"] {
@@ -483,6 +595,151 @@ header h1 {
 
 .player-volume:hover input[type="range"]::-webkit-slider-thumb {
     opacity: 1;
+}
+
+/* === Now Playing Overlay === */
+.now-playing-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+}
+
+.np-close {
+    position: absolute;
+    top: 20px;
+    right: 24px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 2rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.15s;
+}
+
+.np-close:hover {
+    color: #fff;
+}
+
+.np-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    max-width: 480px;
+    width: 100%;
+}
+
+.np-thumb {
+    width: 300px;
+    height: 300px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: #282828;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.np-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.np-artist {
+    font-size: 1rem;
+    color: #1db954;
+    text-align: center;
+    cursor: default;
+    transition: text-decoration 0.15s;
+}
+
+.np-artist[style*="cursor"] {
+    cursor: pointer;
+}
+
+.np-artist[style*="cursor"]:hover {
+    text-decoration: underline;
+}
+
+.np-album {
+    font-size: 0.9rem;
+    color: #888;
+    text-align: center;
+    cursor: default;
+}
+
+.np-album[style*="cursor"] {
+    cursor: pointer;
+}
+
+.np-album[style*="cursor"]:hover {
+    color: #1db954;
+    text-decoration: underline;
+}
+
+.np-progress {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.np-progress input[type="range"] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.np-progress input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #1db954;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.np-controls {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-top: 8px;
+}
+
+.np-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.np-action-btn {
+    background: #282828;
+    color: #e0e0e0;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 18px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.np-action-btn:hover {
+    background: #1db954;
+    color: #000;
 }
 
 .hidden {
@@ -516,7 +773,7 @@ header h1 {
     .player {
         flex-wrap: wrap;
         padding: 10px 16px;
-        gap: 10px;
+        gap: 8px;
     }
     .player-info {
         min-width: auto;
@@ -526,13 +783,19 @@ header h1 {
         width: 44px;
         height: 44px;
     }
+    .player-kebab {
+        display: none;
+    }
     .player-center {
         order: 3;
         width: 100%;
         max-width: none;
     }
+    .player-right {
+        gap: 8px;
+    }
     .player-volume {
-        min-width: 100px;
+        min-width: 80px;
     }
     .results {
         grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -540,5 +803,12 @@ header h1 {
     .artist-header {
         flex-direction: column;
         text-align: center;
+    }
+    .np-thumb {
+        width: 220px;
+        height: 220px;
+    }
+    .now-playing-overlay {
+        padding: 20px;
     }
 }

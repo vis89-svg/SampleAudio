@@ -9,8 +9,14 @@ const playerDiv = document.getElementById("player");
 
 let currentTab = "songs";
 let queue = [];
+let currentSong = null;
 let queueIndex = -1;
 let searchCache = {};
+
+/* === Sleep Timer === */
+let sleepTimerTimeout = null;
+let sleepTimerEnd = null;
+let sleepTimerInterval = null;
 
 searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") doSearch();
@@ -57,7 +63,7 @@ function renderSongs(songs) {
     queue = songs;
     resultsDiv.innerHTML = songs.map((s, i) => `
         <div class="song-row" onclick="playSong(${i})">
-            <img src="/api/thumbnail/${s.id}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
+            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
             <div class="info">
                 <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
                 <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
@@ -74,7 +80,7 @@ function renderArtists(artists) {
     }
     resultsDiv.innerHTML = artists.map(a => `
         <div class="artist-card" onclick="openArtist('${a.id}')">
-            <img src="/api/thumbnail/${a.id}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
             <div class="title">${esc(a.name)}</div>
         </div>
     `).join("");
@@ -87,7 +93,7 @@ function renderAlbums(albums) {
     }
     resultsDiv.innerHTML = albums.map(a => `
         <div class="album-card" onclick="openAlbum('${a.id}')">
-            <img src="/api/thumbnail/${a.id}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
             <div class="title">${esc(a.title)}</div>
             <div class="artist-name">${esc(a.artist)}${a.year ? ' &middot; ' + a.year : ''}</div>
         </div>
@@ -117,7 +123,7 @@ async function openArtist(browseId) {
         artistView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
             <div class="artist-header">
-                <img src="/api/thumbnail/${browseId}" alt="" onerror="this.style.background='#333'">
+                <img src="${data.thumbnail || ''}" alt="" onerror="this.style.background='#333'">
                 <div>
                     <h2>${esc(data.name)}</h2>
                 </div>
@@ -125,7 +131,7 @@ async function openArtist(browseId) {
             <div class="section-title">Top Songs</div>
             ${queue.map((s, i) => `
                 <div class="song-row" onclick="playSong(${i})">
-                    <img src="/api/thumbnail/${s.id}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
                     <div class="info">
                         <div class="title">${esc(s.title)}</div>
                         <div class="subtitle">${esc(s.artist)}</div>
@@ -138,7 +144,7 @@ async function openArtist(browseId) {
                 <div class="results">
                     ${data.albums.map(a => `
                         <div class="album-card" onclick="openAlbum('${a.id}')">
-                            <img src="/api/thumbnail/${a.id}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
                             <div class="title">${esc(a.title)}</div>
                             <div class="artist-name">${a.year || ''}</div>
                         </div>
@@ -167,7 +173,7 @@ async function openAlbum(browseId) {
         albumView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
             <div class="artist-header">
-                <img src="/api/thumbnail/${browseId}" alt="" style="border-radius:8px" onerror="this.style.background='#333'">
+                <img src="${data.thumbnail || ''}" alt="" style="border-radius:8px" onerror="this.style.background='#333'">
                 <div>
                     <h2>${esc(data.title)}</h2>
                     <div style="color:#888;margin-top:4px">${esc(data.artist)}${data.year ? ' &middot; ' + data.year : ''}</div>
@@ -176,7 +182,7 @@ async function openAlbum(browseId) {
             <div class="section-title">Tracks</div>
             ${queue.map((t, i) => `
                 <div class="song-row" onclick="playSong(${i})">
-                    <img src="/api/thumbnail/${t.id}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
                     <div class="info">
                         <div class="title">${t.number || ''}. ${esc(t.title)}</div>
                         <div class="subtitle">${esc(t.artist)}</div>
@@ -201,15 +207,19 @@ function playSong(index) {
     if (index < 0 || index >= queue.length) return;
     queueIndex = index;
     const song = queue[index];
+    currentSong = song;
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
 
     document.getElementById("playerTitle").textContent = song.title;
-    document.getElementById("playerArtist").textContent = "Loading...";
-    document.getElementById("playerThumb").src = `/api/thumbnail/${song.id}`;
+    document.getElementById("playerArtist").textContent = song.artist || "Loading...";
+    document.getElementById("playerThumb").src = song.thumbnail || '';
+    document.getElementById("playerAlbumName").textContent = song.album || '';
+    document.getElementById("playerAlbumName").style.pointerEvents = song.album_id ? "cursor" : "default";
     playerDiv.classList.remove("hidden");
     document.getElementById("playPauseBtn").classList.add("buffering");
     hideCleanNote();
+    closeKebabMenu();
 
     audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
     audio.load();
@@ -257,13 +267,25 @@ function hideCleanNote() {
 function updatePlayIcon() {
     const playIcon = document.getElementById("playIcon");
     const pauseIcon = document.getElementById("pauseIcon");
-    if (!playIcon || !pauseIcon) return;
-    if (audio.paused) {
-        playIcon.classList.remove("hidden");
-        pauseIcon.classList.add("hidden");
-    } else {
-        playIcon.classList.add("hidden");
-        pauseIcon.classList.remove("hidden");
+    const npPlayIcon = document.getElementById("npPlayIcon");
+    const npPauseIcon = document.getElementById("npPauseIcon");
+    if (playIcon && pauseIcon) {
+        if (audio.paused) {
+            playIcon.classList.remove("hidden");
+            pauseIcon.classList.add("hidden");
+        } else {
+            playIcon.classList.add("hidden");
+            pauseIcon.classList.remove("hidden");
+        }
+    }
+    if (npPlayIcon && npPauseIcon) {
+        if (audio.paused) {
+            npPlayIcon.classList.remove("hidden");
+            npPauseIcon.classList.add("hidden");
+        } else {
+            npPlayIcon.classList.add("hidden");
+            npPauseIcon.classList.remove("hidden");
+        }
     }
 }
 
@@ -296,12 +318,162 @@ function skipForward() {
     audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10);
 }
 
+/* === Kebab Menu === */
+function toggleKebabMenu(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById("kebabMenu");
+    menu.classList.toggle("hidden");
+}
+
+function closeKebabMenu() {
+    const menu = document.getElementById("kebabMenu");
+    if (menu) menu.classList.add("hidden");
+}
+
+document.addEventListener("click", (e) => {
+    const menu = document.getElementById("kebabMenu");
+    const btn = document.querySelector(".kebab-btn");
+    if (menu && !menu.classList.contains("hidden")) {
+        if (!menu.contains(e.target) && !btn.contains(e.target)) {
+            menu.classList.add("hidden");
+        }
+    }
+});
+
+/* === View Artist / Album from player === */
+function viewArtist() {
+    closeKebabMenu();
+    closeNowPlaying();
+    if (currentSong && currentSong.artist_id) {
+        openArtist(currentSong.artist_id);
+    } else {
+        showCleanNoInfo("No artist info available");
+    }
+}
+
+function viewAlbum() {
+    closeKebabMenu();
+    closeNowPlaying();
+    if (currentSong && currentSong.album_id) {
+        openAlbum(currentSong.album_id);
+    } else {
+        showCleanNoInfo("No album info available");
+    }
+}
+
+function showCleanNoInfo(msg) {
+    let note = document.getElementById("cleanNote");
+    if (!note) {
+        note = document.createElement("div");
+        note.id = "cleanNote";
+        note.className = "clean-note";
+        document.body.appendChild(note);
+    }
+    note.textContent = msg;
+    note.classList.add("show");
+    setTimeout(() => note.classList.remove("show"), 2000);
+}
+
+/* === Now Playing Overlay === */
+function openNowPlaying() {
+    closeKebabMenu();
+    if (!currentSong) return;
+    const overlay = document.getElementById("nowPlayingOverlay");
+    document.getElementById("npThumb").src = currentSong.thumbnail || '';
+    document.getElementById("npTitle").textContent = currentSong.title || '';
+    document.getElementById("npArtist").textContent = currentSong.artist || '';
+    document.getElementById("npAlbum").textContent = currentSong.album || '';
+    document.getElementById("npArtist").style.pointerEvents = currentSong.artist_id ? "cursor" : "default";
+    document.getElementById("npAlbum").style.pointerEvents = currentSong.album_id ? "cursor" : "default";
+    overlay.classList.remove("hidden");
+}
+
+function closeNowPlaying() {
+    const overlay = document.getElementById("nowPlayingOverlay");
+    if (overlay) overlay.classList.add("hidden");
+}
+
+document.getElementById("playerAlbumName").addEventListener("click", () => {
+    if (currentSong && currentSong.album_id) {
+        openNowPlaying();
+    }
+});
+
+document.getElementById("npArtist").addEventListener("click", () => {
+    if (currentSong && currentSong.artist_id) {
+        viewArtist();
+    }
+});
+
+document.getElementById("npAlbum").addEventListener("click", () => {
+    if (currentSong && currentSong.album_id) {
+        viewAlbum();
+    }
+});
+
+/* === Sleep Timer === */
+function showSleepTimerMenu() {
+    closeKebabMenu();
+    const menu = document.getElementById("sleepTimerMenu");
+    menu.classList.toggle("hidden");
+}
+
+function startSleepTimer(minutes) {
+    cancelSleepTimer();
+    sleepTimerEnd = Date.now() + minutes * 60 * 1000;
+    sleepTimerTimeout = setTimeout(() => {
+        audio.pause();
+        cancelSleepTimer();
+        showCleanNoInfo("Sleep timer ended");
+    }, minutes * 60 * 1000);
+
+    updateSleepBadge();
+    sleepTimerInterval = setInterval(updateSleepBadge, 1000);
+    document.getElementById("sleepTimerMenu").classList.add("hidden");
+    showCleanNoInfo(`Sleep timer set for ${minutes} min`);
+}
+
+function cancelSleepTimer() {
+    if (sleepTimerTimeout) {
+        clearTimeout(sleepTimerTimeout);
+        sleepTimerTimeout = null;
+    }
+    if (sleepTimerInterval) {
+        clearInterval(sleepTimerInterval);
+        sleepTimerInterval = null;
+    }
+    sleepTimerEnd = null;
+    const badge = document.getElementById("sleepBadge");
+    if (badge) badge.classList.add("hidden");
+}
+
+function updateSleepBadge() {
+    if (!sleepTimerEnd) return;
+    const remaining = Math.max(0, sleepTimerEnd - Date.now());
+    const badge = document.getElementById("sleepBadge");
+    if (remaining <= 0) {
+        cancelSleepTimer();
+        return;
+    }
+    const m = Math.floor(remaining / 60000);
+    const s = Math.floor((remaining % 60000) / 1000);
+    badge.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+    badge.classList.remove("hidden");
+}
+
+/* === Audio Events === */
 audio.addEventListener("timeupdate", () => {
     if (audio.duration) {
         const pct = (audio.currentTime / audio.duration) * 100;
         document.getElementById("progressBar").value = pct;
         document.getElementById("currentTime").textContent = fmtTime(audio.currentTime);
         document.getElementById("totalTime").textContent = fmtTime(audio.duration);
+        const npBar = document.getElementById("npProgressBar");
+        const npCur = document.getElementById("npCurrentTime");
+        const npTot = document.getElementById("npTotalTime");
+        if (npBar) npBar.value = pct;
+        if (npCur) npCur.textContent = fmtTime(audio.currentTime);
+        if (npTot) npTot.textContent = fmtTime(audio.duration);
     }
 });
 
@@ -367,6 +539,10 @@ function showLoading() {
 
 document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (!document.getElementById("nowPlayingOverlay").classList.contains("hidden")) {
+        if (e.key === "Escape") closeNowPlaying();
+        return;
+    }
     switch (e.key) {
         case " ":
             e.preventDefault();

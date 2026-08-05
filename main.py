@@ -182,10 +182,10 @@ def api_stream(video_id: str, quality: str = Query("normal"),
         active_event = entry["event"] if entry and not entry["event"].is_set() else None
 
         if active_event:
-            file_path = find_audio_file(video_id) or entry["file_path"]
+            file_path = find_audio_file(video_id, quality) or entry["file_path"]
             event = active_event
         else:
-            cached = find_audio_file(video_id)
+            cached = find_audio_file(video_id, quality)
             if cached:
                 # If this file is the target of an in-progress JioSaavn
                 # download, reuse its event for progressive streaming instead
@@ -217,7 +217,7 @@ def api_stream(video_id: str, quality: str = Query("normal"),
                     event = active["event"]
                     deadline = time.time() + STREAM_WAIT_TIMEOUT
                     while time.time() < deadline:
-                        file_path = find_audio_file(video_id)
+                        file_path = find_audio_file(video_id, quality)
                         if file_path or event.is_set():
                             break
                         time.sleep(STREAM_POLL_INTERVAL)
@@ -237,7 +237,7 @@ def api_stream(video_id: str, quality: str = Query("normal"),
                 if needs_trim:
                     active = start_streaming_download(video_id)
                     active["event"].wait(STREAM_WAIT_TIMEOUT)
-                    raw_path = find_audio_file(video_id)
+                    raw_path = find_audio_file(video_id, "normal")
                     if not raw_path:
                         raise HTTPException(status_code=500, detail="Download failed to start")
                     file_path = trim_audio(raw_path, segments)
@@ -264,7 +264,7 @@ def api_stream(video_id: str, quality: str = Query("normal"),
 
                         deadline = time.time() + STREAM_WAIT_TIMEOUT
                         while time.time() < deadline:
-                            file_path = find_audio_file(video_id)
+                            file_path = find_audio_file(video_id, quality)
                             if file_path:
                                 break
                             if event.is_set():
@@ -345,18 +345,32 @@ def _fetch_best_thumbnail(yt, media_id: str) -> list[dict]:
 
 @app.get("/api/thumbnail/{media_id}")
 def api_thumbnail(media_id: str):
+    import hashlib
+    import urllib.request
+    cache_dir = os.path.join(os.path.dirname(__file__), "cache", "thumbnails")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_key = hashlib.sha256(media_id.encode()).hexdigest()
+    cache_path = os.path.join(cache_dir, f"{cache_key}.img")
+
+    if os.path.exists(cache_path):
+        from fastapi.responses import FileResponse
+        return FileResponse(cache_path, media_type="image/jpeg")
+
     try:
-        from ytmusicapi import YTMusic
-        yt = YTMusic()
+        from api.search import _get_ytmusic
+        yt = _get_ytmusic()
         thumbnails = _fetch_best_thumbnail(yt, media_id)
         best = max(thumbnails, key=lambda t: t.get("width", 0) * t.get("height", 0))
         url = best.get("url", "")
 
-        import urllib.request
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
-            content_type = resp.headers.get_content_type() or "image/jpeg"
+
+        with open(cache_path, "wb") as f:
+            f.write(data)
+
+        content_type = resp.headers.get_content_type() or "image/jpeg"
         return StreamingResponse(iter([data]), media_type=content_type)
     except HTTPException:
         raise

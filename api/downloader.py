@@ -49,18 +49,7 @@ _load_saavn_map()
 
 def _get_ydl_opts(output_template: str = None) -> dict:
     return {
-        "format": "ba[acodec^=opus]/ba[acodec^=mp4a]/ba",
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "opus",
-            "preferredquality": "0",
-        }, {
-            "key": "FFmpegMetadata",
-            "add_metadata": True,
-        }, {
-            "key": "EmbedThumbnail",
-        }],
-        "writethumbnail": True,
+        "format": "ba[acodec^=mp4a]/ba[acodec^=opus]/ba",
         "outtmpl": output_template or os.path.join(DOWNLOAD_DIR, "%(id)s.%(ext)s"),
         "ratelimit": MAX_DOWNLOAD_SPEED,
         "sleep_interval_requests": 2,
@@ -132,13 +121,36 @@ def get_audio_path(video_id: str) -> str | None:
     return None
 
 
-def find_audio_file(video_id: str) -> str | None:
+def find_audio_file(video_id: str, quality: str = "normal") -> str | None:
     """Find any audio file for this video.
-    Preference: normalized (_norm) > trimmed (_trim) > raw.
-    Also checks the JioSaavn-mapped fallback file for this video.
+
+    When quality=="saavn": prefer raw saavn .m4a (320kbps AAC), skip _norm/_trim.
+    When quality=="normal": prefer _norm > _trim > raw (normalized YouTube audio).
     Skips files still being written by an FFmpeg pass."""
     from api.audio import is_processing
-    for base in [video_id, get_saavn_id(video_id) or ""]:
+
+    saavn_id = get_saavn_id(video_id)
+
+    if quality == "saavn":
+        if saavn_id:
+            path = os.path.join(DOWNLOAD_DIR, f"{saavn_id}.m4a")
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                if not is_processing(path):
+                    return path
+        for suffix in ["_trim", ""]:
+            for ext in ["m4a", "opus", "mp3", "ogg", "wav", "webm"]:
+                path = os.path.join(DOWNLOAD_DIR, f"{video_id}{suffix}.{ext}")
+                if os.path.exists(path) and os.path.getsize(path) > 0:
+                    if not is_processing(path):
+                        return path
+        for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
+            path = os.path.join(DOWNLOAD_DIR, f"{video_id}_norm.{ext}")
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                if not is_processing(path):
+                    return path
+        return None
+
+    for base in [video_id, saavn_id or ""]:
         if not base:
             continue
         for suffix in ["_norm", "_trim", ""]:

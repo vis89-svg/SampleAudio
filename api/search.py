@@ -1,5 +1,6 @@
 """YouTube Music search via ytmusicapi"""
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from ytmusicapi import YTMusic
 
@@ -22,19 +23,20 @@ def _thumb_url(thumbnails: list) -> str:
 
 def search_songs(query: str, limit: int = 10) -> list[dict]:
     yt = _get_ytmusic()
-    time.sleep(1)
     results = yt.search(query, filter="songs", limit=limit)
     songs = []
     for r in results:
         if r.get("resultType") != "song":
             continue
-        artists = [a["name"] for a in r.get("artists", [])]
-        album = r.get("album", {})
+        artists = r.get("artists", [])
+        album = r.get("album", {}) or {}
         songs.append({
             "id": r.get("videoId", ""),
             "title": r.get("title", ""),
-            "artist": ", ".join(artists),
-            "album": album.get("name", "") if album else "",
+            "artist": ", ".join(a.get("name", "") for a in artists),
+            "artist_id": artists[0].get("id", "") if artists else "",
+            "album": album.get("name", ""),
+            "album_id": album.get("id", ""),
             "duration": r.get("duration", ""),
             "duration_seconds": r.get("duration_seconds", 0),
             "thumbnail": _thumb_url(r.get("thumbnails", [])),
@@ -46,7 +48,6 @@ def search_songs(query: str, limit: int = 10) -> list[dict]:
 
 def search_artists(query: str, limit: int = 10) -> list[dict]:
     yt = _get_ytmusic()
-    time.sleep(1)
     results = yt.search(query, filter="artists", limit=limit)
     artists = []
     for r in results:
@@ -62,7 +63,6 @@ def search_artists(query: str, limit: int = 10) -> list[dict]:
 
 def search_albums(query: str, limit: int = 10) -> list[dict]:
     yt = _get_ytmusic()
-    time.sleep(1)
     results = yt.search(query, filter="albums", limit=limit)
     albums = []
     for r in results:
@@ -80,25 +80,32 @@ def search_albums(query: str, limit: int = 10) -> list[dict]:
 
 
 def search_all(query: str, limit: int = 10) -> dict:
-    return {
-        "songs": search_songs(query, limit),
-        "artists": search_artists(query, limit),
-        "albums": search_albums(query, limit),
-    }
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_songs = pool.submit(search_songs, query, limit)
+        f_artists = pool.submit(search_artists, query, limit)
+        f_albums = pool.submit(search_albums, query, limit)
+        return {
+            "songs": f_songs.result(),
+            "artists": f_artists.result(),
+            "albums": f_albums.result(),
+        }
 
 
 def get_artist(browse_id: str) -> dict:
     yt = _get_ytmusic()
-    time.sleep(1)
     artist = yt.get_artist(browse_id)
     top_songs = []
-    for s in artist.get("top", {}).get("results", []):
+    for s in artist.get("songs", {}).get("results", []):
         if s.get("videoId"):
-            artists_list = [a["name"] for a in s.get("artists", [])]
+            artists_list = s.get("artists", [])
+            album = s.get("album", {}) or {}
             top_songs.append({
                 "id": s.get("videoId", ""),
                 "title": s.get("title", ""),
-                "artist": ", ".join(artists_list) if artists_list else artist.get("name", ""),
+                "artist": ", ".join(a.get("name", "") for a in artists_list) if artists_list else artist.get("name", ""),
+                "artist_id": artists_list[0].get("id", "") if artists_list else "",
+                "album": album.get("name", ""),
+                "album_id": album.get("id", ""),
                 "duration": s.get("duration", ""),
                 "duration_seconds": s.get("duration_seconds", 0),
                 "thumbnail": _thumb_url(s.get("thumbnails", [])),
@@ -149,15 +156,15 @@ def get_song_details(video_id: str) -> dict:
 
 def get_album(browse_id: str) -> dict:
     yt = _get_ytmusic()
-    time.sleep(1)
     album = yt.get_album(browse_id)
     tracks = []
     for t in album.get("tracks", []):
-        artists_list = [a["name"] for a in t.get("artists", [])]
+        artists_list = t.get("artists", [])
         tracks.append({
             "id": t.get("videoId", ""),
             "title": t.get("title", ""),
-            "artist": ", ".join(artists_list),
+            "artist": ", ".join(a.get("name", "") for a in artists_list),
+            "artist_id": artists_list[0].get("id", "") if artists_list else "",
             "duration": t.get("duration", ""),
             "duration_seconds": t.get("duration_seconds", 0),
             "number": t.get("trackNumber", 0),

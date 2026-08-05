@@ -78,9 +78,28 @@ def trim_audio(input_path: str, segments: list) -> str:
         _unmark_processing(output_path)
 
 
+def _detect_bitrate(path: str) -> int:
+    """Detect audio bitrate in kbps. Returns 0 if unknown."""
+    cmd = [
+        "ffprobe", "-v", "quiet", "-print_format", "json",
+        "-show_format", path,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        import json
+        data = json.loads(result.stdout)
+        br = data.get("format", {}).get("bit_rate", "0")
+        return int(br) // 1000 if br.isdigit() else 0
+    except Exception:
+        return 0
+
+
 def normalize_audio(input_path: str, skip_segments: list | None = None) -> str:
     """Apply EBU R128 loudness normalization, optionally trimming non-music
-    segments first. Returns output path."""
+    segments first. Returns output path.
+
+    Output quality matches input: high-bitrate sources (>=192kbps) are
+    re-encoded to 256kbps AAC; lower-bitrate sources use 128kbps Opus."""
     if not NORMALIZE_AUDIO:
         return input_path
 
@@ -93,6 +112,14 @@ def normalize_audio(input_path: str, skip_segments: list | None = None) -> str:
     if not _mark_processing(output_path):
         return input_path
 
+    input_br = _detect_bitrate(input_path)
+
+    if input_br >= 192:
+        codec_args = ["-c:a", "aac", "-b:a", "256k"]
+    else:
+        codec_args = ["-c:a", "libopus", "-b:a", "128k",
+                      "-compression_level", OPUS_COMPRESSION_LEVEL]
+
     af_parts = []
     if skip_segments:
         expr = _aselect_expression(skip_segments)
@@ -103,10 +130,7 @@ def normalize_audio(input_path: str, skip_segments: list | None = None) -> str:
     cmd = [
         "ffmpeg", "-y", "-i", input_path,
         "-af", ",".join(af_parts),
-        "-c:a", "libopus", "-b:a", "128k",
-        "-compression_level", OPUS_COMPRESSION_LEVEL,
-        output_path,
-    ]
+    ] + codec_args + [output_path]
 
     try:
         subprocess.run(cmd, capture_output=True, check=True, timeout=180)
