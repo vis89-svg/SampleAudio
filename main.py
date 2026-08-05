@@ -314,15 +314,41 @@ def api_sponsorblock(video_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/thumbnail/{video_id}")
-def api_thumbnail(video_id: str):
+def _fetch_best_thumbnail(yt, media_id: str) -> list[dict]:
+    # Try video ID first, then album or artist browse IDs.
+    try:
+        result = yt.get_song(media_id)
+        thumbnails = result.get("videoDetails", {}).get("thumbnail", {}).get("thumbnails", [])
+        if thumbnails:
+            return thumbnails
+    except Exception:
+        pass
+
+    try:
+        album = yt.get_album(media_id)
+        thumbnails = album.get("thumbnails", [])
+        if thumbnails:
+            return thumbnails
+    except Exception:
+        pass
+
+    try:
+        artist = yt.get_artist(media_id)
+        thumbnails = artist.get("thumbnails", [])
+        if thumbnails:
+            return thumbnails
+    except Exception:
+        pass
+
+    raise HTTPException(status_code=404, detail="No thumbnail")
+
+
+@app.get("/api/thumbnail/{media_id}")
+def api_thumbnail(media_id: str):
     try:
         from ytmusicapi import YTMusic
         yt = YTMusic()
-        result = yt.get_song(video_id)
-        thumbnails = result.get("videoDetails", {}).get("thumbnail", {}).get("thumbnails", [])
-        if not thumbnails:
-            raise HTTPException(status_code=404, detail="No thumbnail")
+        thumbnails = _fetch_best_thumbnail(yt, media_id)
         best = max(thumbnails, key=lambda t: t.get("width", 0) * t.get("height", 0))
         url = best.get("url", "")
 
@@ -330,7 +356,8 @@ def api_thumbnail(video_id: str):
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = resp.read()
-        return StreamingResponse(iter([data]), media_type="image/jpeg")
+            content_type = resp.headers.get_content_type() or "image/jpeg"
+        return StreamingResponse(iter([data]), media_type=content_type)
     except HTTPException:
         raise
     except Exception as e:
