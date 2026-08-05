@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SampleAudio</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>SampleAudio</h1>
+            <div class="search-box">
+                <input type="text" id="searchInput" placeholder="Search songs, artists, albums..." autocomplete="off">
+                <button id="searchBtn" onclick="doSearch()">Search</button>
+            </div>
+            <div class="quality-selector">
+                <label>Quality:</label>
+                <select id="qualitySelect">
+                    <option value="normal">YouTube Music 128kbps</option>
+                    <option value="lossless">Tidal FLAC (Lossless)</option>
+                </select>
+            </div>
+        </header>
+
+        <main id="mainContent">
+            <div id="tabs" class="tabs hidden">
+                <button class="tab active" data-tab="songs" onclick="switchTab('songs')">Songs</button>
+                <button class="tab" data-tab="artists" onclick="switchTab('artists')">Artists</button>
+                <button class="tab" data-tab="albums" onclick="switchTab('albums')">Albums</button>
+            </div>
+
+            <div id="results" class="results"></div>
+
+            <div id="artistView" class="artist-view hidden"></div>
+            <div id="albumView" class="album-view hidden"></div>
+        </main>
+
+        <div id="player" class="player hidden">
+            <div class="player-info">
+                <img id="playerThumb" src="" alt="">
+                <div class="player-text">
+                    <div id="playerTitle" class="player-title"></div>
+                    <div id="playerArtist" class="player-artist"></div>
+                </div>
+            </div>
+            <div class="player-controls">
+                <button onclick="prevTrack()">Prev</button>
+                <button id="playPauseBtn" onclick="togglePlay()">Play</button>
+                <button onclick="nextTrack()">Next</button>
+            </div>
+            <div class="player-progress">
+                <span id="currentTime">0:00</span>
+                <input type="range" id="progressBar" min="0" max="100" value="0" oninput="seekAudio(this.value)">
+                <span id="totalTime">0:00</span>
+            </div>
+            <div class="player-volume">
+                <span>Vol</span>
+                <input type="range" id="volumeBar" min="0" max="100" value="80" oninput="setVolume(this.value)">
+            </div>
+        </div>
+    </div>
+
+    <audio id="audioElement" preload="auto"></audio>
+    <script src="/app.js"></script>
+</body>
+</html>
