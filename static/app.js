@@ -202,15 +202,28 @@ function playSong(index) {
     queueIndex = index;
     const song = queue[index];
     const quality = document.getElementById("qualitySelect").value;
+    const clean = document.getElementById("cleanToggle").checked;
 
     document.getElementById("playerTitle").textContent = song.title;
     document.getElementById("playerArtist").textContent = "Loading...";
     document.getElementById("playerThumb").src = `/api/thumbnail/${song.id}`;
     playerDiv.classList.remove("hidden");
     document.getElementById("playPauseBtn").textContent = "Loading";
+    hideCleanNote();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}`;
+    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
     audio.load();
+
+    if (clean) {
+        fetch(`/api/sponsorblock/${song.id}/segments`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data && data.total_skipped > 0) {
+                    showCleanNote(`Clean audio: removed ${fmtTime(data.total_skipped)} of non-music content`);
+                }
+            })
+            .catch(() => {});
+    }
 
     audio.play().then(() => {
         document.getElementById("playPauseBtn").textContent = "Pause";
@@ -220,6 +233,23 @@ function playSong(index) {
         document.getElementById("playPauseBtn").textContent = "Play";
         document.getElementById("playerArtist").textContent = "Failed to load - click Play to retry";
     });
+}
+
+function showCleanNote(msg) {
+    let note = document.getElementById("cleanNote");
+    if (!note) {
+        note = document.createElement("div");
+        note.id = "cleanNote";
+        note.className = "clean-note";
+        document.body.appendChild(note);
+    }
+    note.textContent = msg;
+    note.classList.add("show");
+}
+
+function hideCleanNote() {
+    const note = document.getElementById("cleanNote");
+    if (note) note.classList.remove("show");
 }
 
 function togglePlay() {

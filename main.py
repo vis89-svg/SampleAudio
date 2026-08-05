@@ -13,8 +13,10 @@ from api.search import get_artist, get_album
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
                             active_downloads)
-from api.audio import get_audio_duration, normalize_audio
-from config import DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL, STREAM_WAIT_TIMEOUT
+from api.audio import get_audio_duration, normalize_audio, trim_audio
+from api.sponsorblock import get_skip_segments, total_skipped
+from config import (DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL,
+                    STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP)
 
 app = FastAPI(title="SampleAudio")
 
@@ -95,10 +97,11 @@ def iter_file_progressive(file_path: str, completion_event: threading.Event,
             time.sleep(STREAM_POLL_INTERVAL)
 
 
-def _normalize_in_background(raw_path: str) -> None:
+def _normalize_in_background(raw_path: str, video_id: str | None = None) -> None:
     def run():
         try:
-            normalize_audio(raw_path)
+            segments = get_skip_segments(video_id) if video_id else None
+            normalize_audio(raw_path, segments)
         except Exception:
             pass
     threading.Thread(target=run, daemon=True).start()
@@ -112,7 +115,7 @@ def _normalize_when_done(raw_path: str, completion_event: threading.Event,
                 return
             _normalize_queued.add(video_id)
         completion_event.wait()
-        _normalize_in_background(raw_path)
+        _normalize_in_background(raw_path, video_id)
     threading.Thread(target=run, daemon=True).start()
 
 
@@ -121,7 +124,8 @@ _normalize_lock = threading.Lock()
 
 
 @app.get("/api/stream/{video_id}")
-def api_stream(video_id: str, quality: str = Query("normal")):
+def api_stream(video_id: str, quality: str = Query("normal"),
+               clean: bool = Query(True)):
     try:
         # If a download is still in progress for this video, reuse its event so
         # seek/reload requests continue streaming instead of treating a partial
@@ -145,25 +149,45 @@ def api_stream(video_id: str, quality: str = Query("normal")):
                 event = threading.Event()
                 event.set()
             else:
-                active = start_streaming_download(video_id)
-                event = active["event"]
+                # Check SponsorBlock first: if this song has significant
+                # non-music content, wait for the full download and serve the
+                # trimmed clean version instead of streaming raw audio.
+                segments = get_skip_segments(video_id) if clean else []
+                needs_trim = total_skipped(segments) >= SPONSORBLOCK_MIN_TOTAL_SKIP
 
-                deadline = time.time() + STREAM_WAIT_TIMEOUT
-                while time.time() < deadline:
-                    file_path = find_audio_file(video_id)
-                    if file_path:
-                        break
-                    if event.is_set():
-                        break
-                    time.sleep(STREAM_POLL_INTERVAL)
-
-                if not file_path:
-                    raise HTTPException(status_code=500, detail="Download failed to start")
-
-                if event.is_set():
-                    _normalize_in_background(file_path)
+                if needs_trim:
+                    active = start_streaming_download(video_id)
+                    active["event"].wait(STREAM_WAIT_TIMEOUT)
+                    raw_path = find_audio_file(video_id)
+                    if not raw_path:
+                        raise HTTPException(status_code=500, detail="Download failed to start")
+                    file_path = trim_audio(raw_path, segments)
+                    event = threading.Event()
+                    event.set()
+                    # Full trim + loudness normalization runs in background from
+                    # the RAW file (segment timestamps reference raw timeline)
+                    # so future plays serve the fully processed _norm file.
+                    _normalize_in_background(raw_path, video_id)
                 else:
-                    _normalize_when_done(file_path, event, video_id)
+                    active = start_streaming_download(video_id)
+                    event = active["event"]
+
+                    deadline = time.time() + STREAM_WAIT_TIMEOUT
+                    while time.time() < deadline:
+                        file_path = find_audio_file(video_id)
+                        if file_path:
+                            break
+                        if event.is_set():
+                            break
+                        time.sleep(STREAM_POLL_INTERVAL)
+
+                    if not file_path:
+                        raise HTTPException(status_code=500, detail="Download failed to start")
+
+                    if event.is_set():
+                        _normalize_in_background(file_path, video_id)
+                    else:
+                        _normalize_when_done(file_path, event, video_id)
 
         ext = os.path.splitext(file_path)[1].lower()
         mime = MIME_MAP.get(ext) or mimetypes.guess_type(file_path)[0] or "audio/ogg"
@@ -183,6 +207,19 @@ def api_stream(video_id: str, quality: str = Query("normal")):
         )
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/sponsorblock/{video_id}/segments")
+def api_sponsorblock(video_id: str):
+    try:
+        segments = get_skip_segments(video_id)
+        return {
+            "video_id": video_id,
+            "segments": segments,
+            "total_skipped": round(total_skipped(segments), 1),
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

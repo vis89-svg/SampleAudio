@@ -25,6 +25,11 @@ LOUDNESS_RANGE = 11
 STREAM_POLL_INTERVAL = 0.5  # seconds between file-growth checks
 STREAM_WAIT_TIMEOUT = 45    # max seconds to wait for download to start
 
+# === SponsorBlock Clean Audio ===
+SPONSORBLOCK_ENABLED = True
+SPONSORBLOCK_CATEGORIES = ["music_offtopic", "intro", "outro", "filler"]
+SPONSORBLOCK_MIN_TOTAL_SKIP = 6.0  # only pre-trim if at least this many seconds removed
+
 # === Server ===
 HOST = "0.0.0.0"
 PORT = 8000

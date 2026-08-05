@@ -95,16 +95,16 @@ def get_audio_path(video_id: str) -> str | None:
 
 
 def find_audio_file(video_id: str) -> str | None:
-    """Find any audio file for this video (raw or normalized).
-    Prefers the loudness-normalized version when available."""
-    for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
-        norm = os.path.join(DOWNLOAD_DIR, f"{video_id}_norm.{ext}")
-        if os.path.exists(norm) and os.path.getsize(norm) > 0:
-            return norm
-    for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
-        path = os.path.join(DOWNLOAD_DIR, f"{video_id}.{ext}")
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            return path
+    """Find any audio file for this video.
+    Preference: normalized (_norm) > trimmed (_trim) > raw.
+    Skips files still being written by an FFmpeg pass."""
+    from api.audio import is_processing
+    for suffix in ["_norm", "_trim", ""]:
+        for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
+            path = os.path.join(DOWNLOAD_DIR, f"{video_id}{suffix}.{ext}")
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                if not is_processing(path):
+                    return path
     return None
 
 
