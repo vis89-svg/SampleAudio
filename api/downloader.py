@@ -1,4 +1,5 @@
 """Audio downloader using yt-dlp and SpotiFLAC"""
+import json
 import os
 import threading
 import yt_dlp
@@ -7,6 +8,43 @@ from config import DOWNLOAD_DIR, SLEEP_BETWEEN_DOWNLOADS, MAX_DOWNLOAD_SPEED
 # video_id -> dict(thread, event, file_path, error)
 active_downloads: dict[str, dict] = {}
 _active_lock = threading.Lock()
+
+# youtube video_id -> jiosaavn song id (persisted so cached saavn files are reused)
+_saavn_map: dict[str, str] = {}
+_saavn_map_lock = threading.Lock()
+_saavn_map_path = os.path.join(DOWNLOAD_DIR, ".saavn_map.json")
+
+
+def _load_saavn_map() -> None:
+    global _saavn_map
+    try:
+        with open(_saavn_map_path, "r", encoding="utf-8") as f:
+            _saavn_map = json.load(f)
+    except Exception:
+        _saavn_map = {}
+
+
+def _save_saavn_map() -> None:
+    try:
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        with open(_saavn_map_path, "w", encoding="utf-8") as f:
+            json.dump(_saavn_map, f)
+    except Exception:
+        pass
+
+
+def remember_saavn_id(video_id: str, saavn_id: str) -> None:
+    with _saavn_map_lock:
+        _saavn_map[video_id] = saavn_id
+        _save_saavn_map()
+
+
+def get_saavn_id(video_id: str) -> str | None:
+    with _saavn_map_lock:
+        return _saavn_map.get(video_id)
+
+
+_load_saavn_map()
 
 
 def _get_ydl_opts(output_template: str = None) -> dict:
@@ -97,14 +135,18 @@ def get_audio_path(video_id: str) -> str | None:
 def find_audio_file(video_id: str) -> str | None:
     """Find any audio file for this video.
     Preference: normalized (_norm) > trimmed (_trim) > raw.
+    Also checks the JioSaavn-mapped fallback file for this video.
     Skips files still being written by an FFmpeg pass."""
     from api.audio import is_processing
-    for suffix in ["_norm", "_trim", ""]:
-        for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
-            path = os.path.join(DOWNLOAD_DIR, f"{video_id}{suffix}.{ext}")
-            if os.path.exists(path) and os.path.getsize(path) > 0:
-                if not is_processing(path):
-                    return path
+    for base in [video_id, get_saavn_id(video_id) or ""]:
+        if not base:
+            continue
+        for suffix in ["_norm", "_trim", ""]:
+            for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
+                path = os.path.join(DOWNLOAD_DIR, f"{base}{suffix}.{ext}")
+                if os.path.exists(path) and os.path.getsize(path) > 0:
+                    if not is_processing(path):
+                        return path
     return None
 
 
@@ -147,6 +189,56 @@ def start_streaming_download(video_id: str) -> dict:
         )
         entry["thread"] = thread
         thread.start()
+        return entry
+
+
+def _run_saavn_download(saavn_url: str, song_id: str, quality: str,
+                        completion_event: threading.Event) -> None:
+    opts = {
+        "format": quality,  # "128" or "320"
+        "outtmpl": os.path.join(DOWNLOAD_DIR, f"{song_id}.%(ext)s"),
+        "nopart": True,
+        "retries": 5,
+        "quiet": True,
+        "no_warnings": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([saavn_url])
+    except Exception:
+        pass
+    finally:
+        completion_event.set()
+
+
+def start_saavn_streaming_download(video_id: str, saavn_url: str,
+                                   song_id: str,
+                                   quality: str = "320") -> dict:
+    """Start a background JioSaavn download for progressive streaming.
+    Dedup keyed on song_id so concurrent requests share one download."""
+    key = f"saavn:{song_id}"
+    with _active_lock:
+        existing = active_downloads.get(key)
+        if existing and not existing["event"].is_set():
+            return existing
+
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+        completion_event = threading.Event()
+        entry = {
+            "event": completion_event,
+            "file_path": os.path.join(DOWNLOAD_DIR, f"{song_id}.m4a"),
+            "error": None,
+        }
+        active_downloads[key] = entry
+
+        thread = threading.Thread(
+            target=_run_saavn_download,
+            args=(saavn_url, song_id, quality, completion_event),
+            daemon=True,
+        )
+        entry["thread"] = thread
+        thread.start()
+        remember_saavn_id(video_id, song_id)
         return entry
 
 

@@ -123,6 +123,30 @@ def get_artist(browse_id: str) -> dict:
     }
 
 
+def get_song_details(video_id: str) -> dict:
+    """Get title/artist/duration for a single video (for cross-source matching)."""
+    try:
+        r = _get_ytmusic().get_song(video_id)
+    except Exception:
+        return {}
+    vd = r.get("videoDetails", {}) or {}
+    title = vd.get("title", "")
+    artist = vd.get("author", "")
+    duration_seconds = 0
+    try:
+        duration_seconds = int(vd.get("lengthSeconds") or 0)
+    except (TypeError, ValueError):
+        pass
+    if not title:
+        return {}
+    return {
+        "id": video_id,
+        "title": title,
+        "artist": artist,
+        "duration_seconds": duration_seconds,
+    }
+
+
 def get_album(browse_id: str) -> dict:
     yt = _get_ytmusic()
     time.sleep(1)

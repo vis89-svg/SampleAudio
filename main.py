@@ -9,14 +9,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.search import search_songs, search_artists, search_albums, search_all
-from api.search import get_artist, get_album
+from api.search import get_artist, get_album, get_song_details
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
-                            active_downloads)
+                            active_downloads, get_saavn_id,
+                            start_saavn_streaming_download)
 from api.audio import get_audio_duration, normalize_audio, trim_audio
 from api.sponsorblock import get_skip_segments, total_skipped
+from api.jiosaavn import search_songs as search_saavn_songs
+from api.matcher import match_song
 from config import (DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL,
-                    STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP)
+                    STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP,
+                    JIOSAAVN_ENABLED, JIOSAAVN_QUALITY,
+                    JIOSAAVN_PREFER_ON_NO_SB)
 
 app = FastAPI(title="SampleAudio")
 
@@ -97,10 +102,9 @@ def iter_file_progressive(file_path: str, completion_event: threading.Event,
             time.sleep(STREAM_POLL_INTERVAL)
 
 
-def _normalize_in_background(raw_path: str, video_id: str | None = None) -> None:
+def _normalize_in_background(raw_path: str, segments: list | None = None) -> None:
     def run():
         try:
-            segments = get_skip_segments(video_id) if video_id else None
             normalize_audio(raw_path, segments)
         except Exception:
             pass
@@ -108,19 +112,63 @@ def _normalize_in_background(raw_path: str, video_id: str | None = None) -> None
 
 
 def _normalize_when_done(raw_path: str, completion_event: threading.Event,
-                         video_id: str) -> None:
+                         segments: list | None) -> None:
     def run():
         with _normalize_lock:
-            if video_id in _normalize_queued:
+            if raw_path in _normalize_queued:
                 return
-            _normalize_queued.add(video_id)
+            _normalize_queued.add(raw_path)
         completion_event.wait()
-        _normalize_in_background(raw_path, video_id)
+        _normalize_in_background(raw_path, segments)
     threading.Thread(target=run, daemon=True).start()
 
 
 _normalize_queued: set[str] = set()
 _normalize_lock = threading.Lock()
+
+
+def _try_jiosaavn_stream(video_id: str):
+    """Try to stream this song from JioSaavn (clean 320kbps fallback).
+
+    Matches the YouTube video to a JioSaavn result by title/artist/duration,
+    then starts a progressive saavn download. Returns (file_path, event) or None.
+    """
+    if not JIOSAAVN_ENABLED:
+        return None
+
+    details = get_song_details(video_id)
+    if not details:
+        return None
+
+    query = f"{details['title']} {details['artist']}".strip()
+    if not query:
+        return None
+
+    if JIOSAAVN_QUALITY == "320":
+        results = [r for r in search_saavn_songs(query) if r.get("bitrate_320")]
+    else:
+        results = search_saavn_songs(query)
+    if not results:
+        return None
+
+    match = match_song(details, results)
+    if not match:
+        return None
+
+    entry = start_saavn_streaming_download(
+        video_id, match["url"], match["id"], JIOSAAVN_QUALITY)
+    file_path = entry["file_path"]
+
+    deadline = time.time() + STREAM_WAIT_TIMEOUT
+    while time.time() < deadline:
+        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+            break
+        if entry["event"].is_set():
+            break
+        time.sleep(STREAM_POLL_INTERVAL)
+    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        return None
+    return (file_path, entry["event"])
 
 
 @app.get("/api/stream/{video_id}")
@@ -139,9 +187,18 @@ def api_stream(video_id: str, quality: str = Query("normal"),
         else:
             cached = find_audio_file(video_id)
             if cached:
-                file_path = cached
-                event = threading.Event()
-                event.set()
+                # If this file is the target of an in-progress JioSaavn
+                # download, reuse its event for progressive streaming instead
+                # of serving a partial file as complete.
+                saavn_id = get_saavn_id(video_id)
+                saavn_entry = active_downloads.get(f"saavn:{saavn_id}") if saavn_id else None
+                if saavn_entry and not saavn_entry["event"].is_set():
+                    file_path = saavn_entry["file_path"]
+                    event = saavn_entry["event"]
+                else:
+                    file_path = cached
+                    event = threading.Event()
+                    event.set()
             elif quality == "lossless":
                 file_path = download_flac(f"https://open.spotify.com/track/{video_id}")
                 if not file_path:
@@ -167,27 +224,38 @@ def api_stream(video_id: str, quality: str = Query("normal"),
                     # Full trim + loudness normalization runs in background from
                     # the RAW file (segment timestamps reference raw timeline)
                     # so future plays serve the fully processed _norm file.
-                    _normalize_in_background(raw_path, video_id)
+                    _normalize_in_background(raw_path, segments)
                 else:
-                    active = start_streaming_download(video_id)
-                    event = active["event"]
-
-                    deadline = time.time() + STREAM_WAIT_TIMEOUT
-                    while time.time() < deadline:
-                        file_path = find_audio_file(video_id)
-                        if file_path:
-                            break
-                        if event.is_set():
-                            break
-                        time.sleep(STREAM_POLL_INTERVAL)
-
-                    if not file_path:
-                        raise HTTPException(status_code=500, detail="Download failed to start")
-
-                    if event.is_set():
-                        _normalize_in_background(file_path, video_id)
+                    # No SponsorBlock data: prefer JioSaavn's clean 320kbps
+                    # source over raw YouTube audio (which may contain chatter).
+                    # Saavn files are already clean + mastered, so no trim or
+                    # loudness re-encode is needed. (Re-encoding 320k AAC to
+                    # 128k opus would only degrade quality.)
+                    saavn = None
+                    if clean and JIOSAAVN_PREFER_ON_NO_SB:
+                        saavn = _try_jiosaavn_stream(video_id)
+                    if saavn:
+                        file_path, event = saavn
                     else:
-                        _normalize_when_done(file_path, event, video_id)
+                        active = start_streaming_download(video_id)
+                        event = active["event"]
+
+                        deadline = time.time() + STREAM_WAIT_TIMEOUT
+                        while time.time() < deadline:
+                            file_path = find_audio_file(video_id)
+                            if file_path:
+                                break
+                            if event.is_set():
+                                break
+                            time.sleep(STREAM_POLL_INTERVAL)
+
+                        if not file_path:
+                            raise HTTPException(status_code=500, detail="Download failed to start")
+
+                        if event.is_set():
+                            _normalize_in_background(file_path, segments)
+                        else:
+                            _normalize_when_done(file_path, event, segments)
 
         ext = os.path.splitext(file_path)[1].lower()
         mime = MIME_MAP.get(ext) or mimetypes.guess_type(file_path)[0] or "audio/ogg"

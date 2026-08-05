@@ -28,7 +28,16 @@ STREAM_WAIT_TIMEOUT = 45    # max seconds to wait for download to start
 # === SponsorBlock Clean Audio ===
 SPONSORBLOCK_ENABLED = True
 SPONSORBLOCK_CATEGORIES = ["music_offtopic", "intro", "outro", "filler"]
-SPONSORBLOCK_MIN_TOTAL_SKIP = 6.0  # only pre-trim if at least this many seconds removed
+SPONSORBLOCK_MIN_TOTAL_SKIP = 6.0  # only skip if at least this many seconds removed
+
+# === JioSaavn Fallback Source ===
+# When YouTube fails or has no SponsorBlock data, fall back to JioSaavn's
+# official clean audio (free, up to 320kbps).
+JIOSAAVN_ENABLED = True
+JIOSAAVN_QUALITY = "320"  # "320" or "128"
+JIOSAAVN_SEARCH_LIMIT = 5
+JIOSAAVN_DURATION_TOLERANCE = 5  # seconds tolerance when matching durations
+JIOSAAVN_PREFER_ON_NO_SB = True   # use JioSaavn when SponsorBlock has no data
 
 # === Server ===
 HOST = "0.0.0.0"
