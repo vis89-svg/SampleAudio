@@ -11,6 +11,9 @@ let currentTab = "songs";
 let queue = [];
 let currentSong = null;
 let queueIndex = -1;
+let queueSource = 'other';
+let playedRecently = new Set();
+let userQueue = [];
 let searchCache = {};
 let recommendations = [];
 let upNextOpen = false;
@@ -108,6 +111,7 @@ function showProfilePage() {
             </div>
         `;
 
+        queueSource = 'other';
         if (mixes.mixes && mixes.mixes.length) {
             mixes.mixes.forEach((mix, mixIdx) => {
                 if (!mix.tracks || !mix.tracks.length) return;
@@ -129,6 +133,7 @@ function showProfilePage() {
                                         <div class="subtitle">${esc(t.artist)}</div>
                                     </div>
                                     <div class="duration">${t.duration || ''}</div>
+                                    ${kebabBtn(t)}
                                 </div>
                             `).join("")}
                         </div>
@@ -154,6 +159,7 @@ function showProfilePage() {
                                     <div class="subtitle">${esc(t.artist)}</div>
                                 </div>
                                 <div class="duration">${t.duration || ''}</div>
+                                ${kebabBtn(t)}
                             </div>
                         `).join("")}
                     </div>
@@ -241,6 +247,7 @@ function viewLikes() {
                 return;
             }
             queue = likes;
+            queueSource = 'other';
             resultsDiv.innerHTML = `
                 <div class="profile-section-header"><h3>&#10084;&#65039; Liked Songs (${likes.length})</h3></div>
                 ${likes.map((s, i) => `
@@ -251,6 +258,7 @@ function viewLikes() {
                             <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
                         </div>
                         <div class="duration">${s.duration || ''}</div>
+                        ${kebabBtn(s)}
                     </div>
                 `).join("")}
             `;
@@ -281,6 +289,7 @@ function viewHistory() {
                 return;
             }
             queue = history;
+            queueSource = 'other';
             resultsDiv.innerHTML = `
                 <div class="profile-section-header"><h3>&#128338; Recently Played (${history.length})</h3></div>
                 ${history.map((s, i) => `
@@ -291,6 +300,7 @@ function viewHistory() {
                             <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
                         </div>
                         <div class="duration">${s.duration || ''}</div>
+                        ${kebabBtn(s)}
                     </div>
                 `).join("")}
             `;
@@ -391,6 +401,7 @@ function renderSongs(songs) {
     }
 
     queue = songs;
+    queueSource = 'other';
     resultsDiv.innerHTML = songs.map((s, i) => `
         <div class="song-row" onclick="playSong(${i})">
             <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
@@ -399,6 +410,7 @@ function renderSongs(songs) {
                 <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
             </div>
             <div class="duration">${s.duration || ''}</div>
+            ${kebabBtn(s)}
         </div>
     `).join("");
 }
@@ -437,44 +449,19 @@ function switchTab(tab) {
     if (cached) renderResults(cached);
 }
 
-let currentArtistId = null;
-
-function renderSongRows(songs, startIndex = 0) {
-    return songs.map((s, i) => `
-        <div class="song-row" onclick="playSong(${startIndex + i})">
-            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-            <div class="info">
-                <div class="title">${esc(s.title)}</div>
-                <div class="subtitle">${esc(s.artist)}</div>
-            </div>
-            <div class="duration">${s.duration || ''}</div>
-        </div>
-    `).join("");
-}
-
-function renderAlbumCards(albums) {
-    return albums.map(a => `
-        <div class="album-card" onclick="openAlbum('${a.id}')">
-            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-            <div class="title">${esc(a.title)}</div>
-            <div class="artist-name">${a.year || ''}</div>
-        </div>
-    `).join("");
-}
-
 async function openArtist(browseId) {
     showLoading();
     tabsDiv.classList.add("hidden");
     resultsDiv.classList.add("hidden");
     albumView.classList.add("hidden");
     artistView.classList.remove("hidden");
-    currentArtistId = browseId;
 
     try {
         const resp = await fetch(`/api/artist/${browseId}`);
         const data = await resp.json();
 
         queue = data.top_songs || [];
+        queueSource = 'other';
 
         artistView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
@@ -485,55 +472,32 @@ async function openArtist(browseId) {
                 </div>
             </div>
             <div class="section-title">Top Songs</div>
-            <div id="artistSongsContainer">${renderSongRows(queue)}</div>
-            <button class="show-more-btn" id="showAllSongsBtn" onclick="loadAllArtistSongs()">
-                Show All Songs
-            </button>
+            ${queue.map((s, i) => `
+                <div class="song-row" onclick="playSong(${i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}</div>
+                        <div class="subtitle">${esc(s.artist)}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                    ${kebabBtn(s)}
+                </div>
+            `).join("")}
             ${data.albums && data.albums.length ? `
                 <div class="section-title" style="margin-top:24px">Albums</div>
-                <div class="results" id="artistAlbumsContainer">${renderAlbumCards(data.albums)}</div>
-                <button class="show-more-btn" id="showAllAlbumsBtn" onclick="loadAllArtistAlbums()">
-                    Show All Albums
-                </button>
+                <div class="results">
+                    ${data.albums.map(a => `
+                        <div class="album-card" onclick="openAlbum('${a.id}')">
+                            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                            <div class="title">${esc(a.title)}</div>
+                            <div class="artist-name">${a.year || ''}</div>
+                        </div>
+                    `).join("")}
+                </div>
             ` : ''}
         `;
     } catch (err) {
         artistView.innerHTML = `<div class="empty-state">Failed to load artist</div>`;
-    }
-}
-
-async function loadAllArtistSongs() {
-    const btn = document.getElementById("showAllSongsBtn");
-    btn.textContent = "Loading...";
-    btn.disabled = true;
-
-    try {
-        const resp = await fetch(`/api/artist/${currentArtistId}/songs`);
-        const data = await resp.json();
-
-        queue = data.songs || [];
-        document.getElementById("artistSongsContainer").innerHTML = renderSongRows(queue);
-        btn.remove();
-    } catch (err) {
-        btn.textContent = "Failed to load";
-        btn.disabled = false;
-    }
-}
-
-async function loadAllArtistAlbums() {
-    const btn = document.getElementById("showAllAlbumsBtn");
-    btn.textContent = "Loading...";
-    btn.disabled = true;
-
-    try {
-        const resp = await fetch(`/api/artist/${currentArtistId}/albums`);
-        const data = await resp.json();
-
-        document.getElementById("artistAlbumsContainer").innerHTML = renderAlbumCards(data.albums || []);
-        btn.remove();
-    } catch (err) {
-        btn.textContent = "Failed to load";
-        btn.disabled = false;
     }
 }
 
@@ -549,6 +513,7 @@ async function openAlbum(browseId) {
         const data = await resp.json();
 
         queue = data.tracks || [];
+        queueSource = 'album';
 
         albumView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
@@ -568,6 +533,7 @@ async function openAlbum(browseId) {
                         <div class="subtitle">${esc(t.artist)}</div>
                     </div>
                     <div class="duration">${t.duration || ''}</div>
+                    ${kebabBtn(t)}
                 </div>
             `).join("")}
         `;
@@ -587,6 +553,108 @@ function playSong(index) {
     if (index < 0 || index >= queue.length) return;
     queueIndex = index;
     const song = queue[index];
+    currentSong = song;
+    playedRecently.add(song.id);
+    if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
+    const quality = document.getElementById("qualitySelect").value;
+    const clean = document.getElementById("cleanToggle").checked;
+
+    document.getElementById("playerTitle").textContent = song.title;
+    document.getElementById("playerArtist").textContent = song.artist || "Loading...";
+    document.getElementById("playerThumb").src = song.thumbnail || '';
+    document.getElementById("playerAlbumName").textContent = song.album || '';
+    document.getElementById("playerAlbumName").style.pointerEvents = song.album_id ? "cursor" : "default";
+    playerDiv.classList.remove("hidden");
+    document.getElementById("playPauseBtn").classList.add("buffering");
+    hideCleanNote();
+    closeKebabMenu();
+
+    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.load();
+
+    if (quality === "saavn") {
+        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
+    } else if (clean) {
+        fetch(`/api/sponsorblock/${song.id}/segments`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data && data.total_skipped > 0) {
+                    showCleanNote(`Clean audio: removed ${fmtTime(data.total_skipped)} of non-music content`);
+                }
+            })
+            .catch(() => {});
+    }
+
+    audio.play().then(() => {
+        updatePlayIcon();
+        document.getElementById("playerArtist").textContent = song.artist;
+    }).catch(err => {
+        console.error("Play failed:", err);
+        updatePlayIcon();
+        document.getElementById("playerArtist").textContent = "Failed to load - click Play to retry";
+    });
+
+    fetchRecommendations(song.id);
+    logPlay(song);
+    updateLikeButton();
+}
+
+function playNextSong(song) {
+    if (userQueue.length >= 50) {
+        showCleanNoInfo("Queue is full (50 songs max)");
+        return;
+    }
+    userQueue.push(song);
+    showCleanNoInfo("Added to play next (" + userQueue.length + " in queue)");
+}
+
+function removeFromQueue(index) {
+    userQueue.splice(index, 1);
+    if (upNextOpen) renderUpNext();
+}
+
+function clearQueue() {
+    userQueue = [];
+    if (upNextOpen) renderUpNext();
+}
+
+let currentMenuSong = null;
+
+function kebabBtn(song) {
+    const json = JSON.stringify(song).replace(/"/g, '&quot;');
+    return `<button class="song-kebab-btn" data-song="${json}" onclick="event.stopPropagation(); showSongMenu(this)" title="More options">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
+    </button>`;
+}
+
+function showSongMenu(btn) {
+    closeSongMenu();
+    const song = JSON.parse(btn.dataset.song);
+    currentMenuSong = song;
+
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement("div");
+    menu.id = "songMenu";
+    menu.className = "song-menu";
+    menu.style.position = "fixed";
+    menu.style.top = (rect.bottom + 4) + "px";
+    menu.style.left = Math.min(rect.left - 120, window.innerWidth - 160) + "px";
+    menu.style.zIndex = "300";
+    menu.innerHTML = `
+        <button onclick="playNextSong(currentMenuSong); closeSongMenu();">
+            &#9658; Play Next
+        </button>
+    `;
+    document.body.appendChild(menu);
+}
+
+function closeSongMenu() {
+    const existing = document.getElementById("songMenu");
+    if (existing) existing.remove();
+    currentMenuSong = null;
+}
+
+function playSongDirect(song) {
     currentSong = song;
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
@@ -771,10 +839,23 @@ function prevTrack() {
 }
 
 function nextTrack() {
-    if (queueIndex < queue.length - 1) {
-        playSong(queueIndex + 1);
-    } else if (recommendations.length > 0) {
-        playRecommendation(0);
+    if (userQueue.length > 0) {
+        const song = userQueue.shift();
+        playedRecently.add(song.id);
+        if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
+        playSongDirect(song);
+    } else if (queueSource === 'album') {
+        if (queueIndex < queue.length - 1) {
+            playSong(queueIndex + 1);
+        } else if (recommendations.length > 0) {
+            playRecommendation(0);
+        }
+    } else {
+        if (recommendations.length > 0) {
+            playRecommendation(0);
+        } else if (queueIndex < queue.length - 1) {
+            playSong(queueIndex + 1);
+        }
     }
 }
 
@@ -783,7 +864,9 @@ async function fetchRecommendations(videoId) {
     try {
         const resp = await fetch(`/api/recommendations?videoId=${encodeURIComponent(videoId)}&limit=25`);
         const data = await resp.json();
-        recommendations = (data.tracks || []).filter(t => t.id !== currentSong?.id);
+        recommendations = (data.tracks || [])
+            .filter(t => t.id !== currentSong?.id)
+            .filter(t => !playedRecently.has(t.id));
         if (upNextOpen) renderUpNext();
     } catch (err) {
         console.error("Recommendations failed:", err);
@@ -793,20 +876,72 @@ async function fetchRecommendations(videoId) {
 
 function renderUpNext() {
     const list = document.getElementById("upNextList");
-    if (!recommendations.length) {
-        list.innerHTML = `<div class="empty-state">No recommendations</div>`;
-        return;
-    }
-    list.innerHTML = recommendations.map((s, i) => `
-        <div class="song-row" onclick="playRecommendation(${i})">
-            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-            <div class="info">
-                <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
-                <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+    let html = '';
+
+    if (userQueue.length > 0) {
+        html += `<div class="up-next-divider">Next in Queue (${userQueue.length})</div>`;
+        html += userQueue.map((s, i) => `
+            <div class="song-row" onclick="playSongDirect(userQueue[${i}])">
+                <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="info">
+                    <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                    <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                </div>
+                <div class="duration">${s.duration || ''}</div>
+                <button class="song-remove-btn" onclick="event.stopPropagation(); removeFromQueue(${i})" title="Remove">&#10005;</button>
             </div>
-            <div class="duration">${s.duration || ''}</div>
-        </div>
-    `).join("");
+        `).join("");
+    }
+
+    if (queueSource === 'album') {
+        const remaining = queue.slice(queueIndex + 1);
+        if (remaining.length) {
+            html += remaining.map((s, i) => `
+                <div class="song-row" onclick="playSong(${queueIndex + 1 + i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                        <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                </div>
+            `).join("");
+        }
+        if (recommendations.length) {
+            html += `<div class="up-next-divider">Recommended</div>`;
+            html += recommendations.map((s, i) => `
+                <div class="song-row" onclick="playRecommendation(${i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                        <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                    ${kebabBtn(s)}
+                </div>
+            `).join("");
+        }
+    } else {
+        if (recommendations.length) {
+            html += recommendations.map((s, i) => `
+                <div class="song-row" onclick="playRecommendation(${i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                        <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                    ${kebabBtn(s)}
+                </div>
+            `).join("");
+        }
+    }
+
+    if (!html) {
+        html = `<div class="empty-state">No upcoming tracks</div>`;
+    }
+
+    list.innerHTML = html;
 }
 
 function playRecommendation(index) {
@@ -817,7 +952,10 @@ function playRecommendation(index) {
 
     queue = recommendations;
     queueIndex = index;
+    queueSource = 'other';
     currentSong = song;
+    playedRecently.add(song.id);
+    if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
 
     document.getElementById("playerTitle").textContent = song.title;
     document.getElementById("playerArtist").textContent = song.artist || "Loading...";
@@ -909,6 +1047,11 @@ document.addEventListener("click", (e) => {
         if (!userDropdown.contains(e.target) && !userMenu.contains(e.target)) {
             userDropdown.classList.add("hidden");
         }
+    }
+    const songMenu = document.getElementById("songMenu");
+    const songKebabBtn = document.querySelector(".song-kebab-btn:hover");
+    if (songMenu && !songMenu.contains(e.target) && !e.target.closest(".song-kebab-btn")) {
+        closeSongMenu();
     }
 });
 
