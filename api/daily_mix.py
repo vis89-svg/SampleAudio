@@ -416,8 +416,9 @@ def _fallback_mix(user_id: int) -> list[dict]:
                 artist_data = get_artist(artist["artist_id"])
                 top_songs = artist_data.get("top_songs", [])[:8]
                 for s in top_songs:
+                    vid = s.get("id", s.get("videoId", ""))
                     tracks.append({
-                        "id": s.get("videoId", ""),
+                        "id": vid,
                         "title": s.get("title", ""),
                         "artist": s.get("artist", artist["artist"]),
                         "artist_id": s.get("artist_id", ""),
@@ -426,7 +427,7 @@ def _fallback_mix(user_id: int) -> list[dict]:
                         "duration": s.get("duration", ""),
                         "duration_seconds": s.get("duration_seconds", 0),
                         "thumbnail": s.get("thumbnail", ""),
-                        "url": f"https://music.youtube.com/watch?v={s.get('videoId', '')}",
+                        "url": f"https://music.youtube.com/watch?v={vid}",
                     })
             except Exception:
                 pass

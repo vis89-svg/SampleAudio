@@ -366,6 +366,7 @@ async function doSearch() {
     const q = searchInput.value.trim();
     if (!q) return;
 
+    showSearch();
     showLoading();
 
     if (searchCache[q]) {
