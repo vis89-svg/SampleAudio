@@ -7,8 +7,13 @@ from api.models import (
 )
 from api.daily_mix import (
     generate_daily_mix, generate_suggestions,
+    generate_discovery_mix, generate_because_you_liked,
+    generate_album_suggestions, generate_new_artist_suggestions,
     get_top_artists, get_top_albums, get_recently_played, get_liked_songs
 )
+from api.events import publish_play_event, subscribe
+from api.sessions import update_session, compute_fingerprint
+from api.transitions import record_transition
 
 router = APIRouter(prefix="/api/user", tags=["user"])
 
@@ -16,17 +21,21 @@ router = APIRouter(prefix="/api/user", tags=["user"])
 # === Listening History ===
 
 @router.post("/history")
-def log_play(entry: HistoryEntry, user: dict = Depends(get_current_user)):
-    """Log a song play to listening history."""
+async def log_play(entry: HistoryEntry, user: dict = Depends(get_current_user)):
+    """Log a song play to listening history and publish event."""
     with get_db() as db:
         db.execute(
             """INSERT INTO listening_history
-               (user_id, video_id, title, artist, album, thumbnail, duration, duration_seconds, artist_id, album_id, duration_played, completed)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               (user_id, video_id, title, artist, album, thumbnail, duration,
+                duration_seconds, artist_id, album_id, duration_played, completed,
+                skipped, skip_position, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user["user_id"], entry.video_id, entry.title, entry.artist,
              entry.album, entry.thumbnail, entry.duration, entry.duration_seconds,
-             entry.artist_id, entry.album_id, entry.duration_played, entry.completed),
+             entry.artist_id, entry.album_id, entry.duration_played, entry.completed,
+             entry.skipped, entry.skip_position, entry.source or "search"),
         )
+    await publish_play_event(user["user_id"], entry.model_dump())
     return {"status": "ok"}
 
 
@@ -226,6 +235,34 @@ def daily_mix(user: dict = Depends(get_current_user)):
     return {"mixes": mixes}
 
 
+@router.get("/mixes/discovery")
+def discovery_mix(user: dict = Depends(get_current_user)):
+    """Generate Discovery Mix with more adventurous tracks."""
+    mix = generate_discovery_mix(user["user_id"])
+    return {"mix": mix}
+
+
+@router.get("/mixes/because-you-liked")
+def because_you_liked(user: dict = Depends(get_current_user)):
+    """Generate 'Because You Liked' suggestions."""
+    suggestions = generate_because_you_liked(user["user_id"])
+    return {"suggestions": suggestions}
+
+
+@router.get("/mixes/albums")
+def album_suggestions(user: dict = Depends(get_current_user)):
+    """Suggest albums user has partially played."""
+    albums = generate_album_suggestions(user["user_id"])
+    return {"albums": albums}
+
+
+@router.get("/mixes/new-artists")
+def new_artist_suggestions(user: dict = Depends(get_current_user)):
+    """Suggest new artists based on favorites."""
+    artists = generate_new_artist_suggestions(user["user_id"])
+    return {"artists": artists}
+
+
 @router.get("/suggestions")
 def suggestions(user: dict = Depends(get_current_user)):
     """Generate personalized suggestions based on liked songs and history."""
@@ -258,3 +295,51 @@ def liked_songs(user: dict = Depends(get_current_user)):
     """Get liked songs with full data."""
     songs = get_liked_songs(user["user_id"])
     return {"songs": songs}
+
+
+# === Recommendation v2 Routes ===
+
+from api.sessions import get_recent_sessions
+from api.transitions import get_all_transitions
+
+
+@router.get("/sessions")
+def api_sessions(user: dict = Depends(get_current_user)):
+    """Get recent listening sessions."""
+    sessions = get_recent_sessions(user["user_id"])
+    return {"sessions": sessions}
+
+
+@router.get("/transitions")
+def api_transitions(user: dict = Depends(get_current_user)):
+    """Get song transitions."""
+    transitions = get_all_transitions(user["user_id"])
+    return {"transitions": transitions}
+
+
+# === Event Bus Initialization ===
+
+from api.taste_engine.profile import update_taste_profile
+from api.taste_engine.scoring import update_scores
+
+
+def _handle_profile_update(user_id: int, play_data: dict):
+    """Update taste profile after session completes."""
+    with get_db() as db:
+        last = db.execute(
+            "SELECT session_id FROM listening_history WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if last and last["session_id"]:
+            update_taste_profile(user_id, last["session_id"])
+
+
+def _init_event_bus():
+    """Register event handlers for the play event pipeline."""
+    subscribe(update_session)
+    subscribe(record_transition)
+    subscribe(update_scores)
+    subscribe(_handle_profile_update)
+
+
+_init_event_bus()

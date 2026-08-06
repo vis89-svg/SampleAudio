@@ -1284,5 +1284,201 @@ document.addEventListener("keydown", (e) => {
     }
 });
 
+/* === Navigation === */
+function showHome() {
+    document.getElementById("homeView").classList.remove("hidden");
+    document.getElementById("searchView").classList.add("hidden");
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelector(".nav-btn:first-child").classList.add("active");
+    loadHomeFeed();
+}
+
+function showSearch() {
+    document.getElementById("homeView").classList.add("hidden");
+    document.getElementById("searchView").classList.remove("hidden");
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelector(".nav-btn:nth-child(2)").classList.add("active");
+}
+
+/* === Home Feed === */
+async function loadHomeFeed() {
+    const container = document.getElementById("homeContent");
+    container.innerHTML = `<div class="loading">Loading your personalized feed...</div>`;
+
+    const greeting = document.getElementById("homeGreeting");
+    const hour = new Date().getHours();
+    const timeStr = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+    greeting.innerHTML = `<h2>${timeStr}${currentUser ? ", " + esc(currentUser.username) : ""}</h2>`;
+
+    if (!authToken) {
+        container.innerHTML = `
+            <div class="home-section">
+                <div class="home-section-header"><h3>Welcome to SampleAudio</h3></div>
+                <div class="profile-empty">
+                    <h3>Login to get started</h3>
+                    <p>Sign in to see your Daily Mixes, Discovery recommendations, and personalized suggestions.</p>
+                    <a href="/login.html" class="mix-play-btn" style="display:inline-block;text-decoration:none;position:static;opacity:1;transform:none">&#128269; Login</a>
+                </div>
+            </div>`;
+        return;
+    }
+
+    try {
+        const [dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
+            authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
+            authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
+            authFetch("/api/user/mixes/because-you-liked").then(r => r.json()),
+            authFetch("/api/user/mixes/albums").then(r => r.json()),
+            authFetch("/api/user/mixes/new-artists").then(r => r.json()),
+        ]);
+
+        let html = "";
+
+        if (dailyMixes.mixes && dailyMixes.mixes.length) {
+            html += renderDailyMixes(dailyMixes.mixes);
+        }
+
+        if (discovery.mix && discovery.mix.tracks && discovery.mix.tracks.length) {
+            html += renderDiscoveryMix(discovery.mix);
+        }
+
+        if (becauseLiked.suggestions && becauseLiked.suggestions.length) {
+            html += renderBecauseYouLiked(becauseLiked.suggestions);
+        }
+
+        if (albums.albums && albums.albums.length) {
+            html += renderAlbumSuggestions(albums.albums);
+        }
+
+        if (artists.artists && artists.artists.length) {
+            html += renderNewArtists(artists.artists);
+        }
+
+        if (!html) {
+            html = `<div class="profile-empty">
+                <h3>Start Listening!</h3>
+                <p>Play some songs to get personalized Daily Mixes, artist recommendations, and album suggestions.</p>
+                <button class="mix-play-btn" style="position:static;opacity:1;transform:none" onclick="showSearch()">&#128269; Search Songs</button>
+            </div>`;
+        }
+
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="empty-state">Failed to load feed. Please try again.</div>`;
+    }
+}
+
+function renderDailyMixes(mixes) {
+    let html = `<div class="home-section"><div class="home-section-header"><h3>&#127925; Daily Mixes</h3></div><div class="mix-grid">`;
+    mixes.forEach((mix, i) => {
+        const thumb = mix.tracks[0]?.thumbnail || "";
+        const basedOn = (mix.based_on || []).join(", ");
+        html += `
+            <div class="mix-card" onclick="playMix('daily', ${i})">
+                <img src="${thumb}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('daily', ${i})">&#9654;</button>
+                <div class="mix-title">${esc(mix.name)}</div>
+                <div class="mix-subtitle">${esc(basedOn)}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+function renderDiscoveryMix(mix) {
+    const thumb = mix.tracks[0]?.thumbnail || "";
+    return `<div class="home-section">
+        <div class="home-section-header">
+            <h3>&#127758; Discovery Mix</h3>
+            <span class="section-subtitle">New music tailored for you</span>
+        </div>
+        <div class="mix-grid">
+            <div class="mix-card" onclick="playMix('discovery', 0)">
+                <img src="${thumb}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('discovery', 0)">&#9654;</button>
+                <div class="mix-title">${esc(mix.name || "Discovery Mix")}</div>
+                <div class="mix-subtitle">${(mix.tracks || []).length} tracks</div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderBecauseYouLiked(suggestions) {
+    let html = `<div class="home-section"><div class="home-section-header"><h3>&#10084;&#65039; Because You Liked</h3></div><div class="because-liked-grid">`;
+    suggestions.slice(0, 3).forEach((s, i) => {
+        const songs = (s.tracks || []).slice(0, 3).map(t => esc(t.title)).join("<br>");
+        html += `
+            <div class="because-liked-card" onclick="playBecauseLiked(${i})">
+                <div class="seed-info">Because you liked <strong>${esc(s.seed_title)}</strong></div>
+                <div class="seed-songs">${songs}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+function renderAlbumSuggestions(albums) {
+    let html = `<div class="home-section"><div class="home-section-header"><h3>&#128193; Albums For You</h3></div><div class="suggestion-grid">`;
+    albums.slice(0, 6).forEach(a => {
+        html += `
+            <div class="suggestion-card" onclick="openAlbum('${a.album_id}')">
+                <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="card-title">${esc(a.album)}</div>
+                <div class="card-subtitle">${esc(a.artist)}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+function renderNewArtists(artists) {
+    let html = `<div class="home-section"><div class="home-section-header"><h3>&#127908; New Artists</h3></div><div class="suggestion-grid">`;
+    artists.slice(0, 6).forEach(a => {
+        html += `
+            <div class="suggestion-card" onclick="openArtist('${a.artist_id}')">
+                <img src="${a.thumbnail || ''}" alt="" class="round" loading="lazy" onerror="this.style.background='#333'">
+                <div class="card-title">${esc(a.artist_name)}</div>
+                <div class="card-subtitle">From ${esc(a.based_on)}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+/* === Play Mix from Home === */
+async function playMix(type, index) {
+    let data;
+    if (type === "daily") {
+        const resp = await authFetch("/api/user/daily-mix");
+        data = await resp.json();
+        if (data.mixes && data.mixes[index]) {
+            queue = data.mixes[index].tracks;
+            queueSource = 'daily-mix';
+            playSong(0);
+        }
+    } else if (type === "discovery") {
+        const resp = await authFetch("/api/user/mixes/discovery");
+        data = await resp.json();
+        if (data.mix && data.mix.tracks) {
+            queue = data.mix.tracks;
+            queueSource = 'discovery';
+            playSong(0);
+        }
+    }
+}
+
+async function playBecauseLiked(index) {
+    const resp = await authFetch("/api/user/mixes/because-you-liked");
+    const data = await resp.json();
+    if (data.suggestions && data.suggestions[index]) {
+        queue = data.suggestions[index].tracks;
+        queueSource = 'because-liked';
+        playSong(0);
+    }
+}
+
 /* === Initialize Auth on page load === */
 initAuth();
+if (authToken) {
+    loadHomeFeed();
+}

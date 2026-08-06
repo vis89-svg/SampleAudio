@@ -88,7 +88,91 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_likes_user ON user_likes(user_id);
             CREATE INDEX IF NOT EXISTS idx_followed_artists_user ON followed_artists(user_id);
             CREATE INDEX IF NOT EXISTS idx_followed_albums_user ON followed_albums(user_id);
+
+            -- =============================================
+            -- Recommendation System v2 Tables
+            -- =============================================
+
+            CREATE TABLE IF NOT EXISTS listening_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                started_at TIMESTAMP NOT NULL,
+                ended_at TIMESTAMP,
+                songs_count INTEGER DEFAULT 0,
+                fingerprint_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_sessions_user ON listening_sessions(user_id, started_at DESC);
+
+            CREATE TABLE IF NOT EXISTS session_songs (
+                session_id INTEGER NOT NULL,
+                song_id TEXT NOT NULL,
+                video_id TEXT NOT NULL,
+                artist_id TEXT,
+                album_id TEXT,
+                play_order INTEGER NOT NULL,
+                completed BOOLEAN DEFAULT 0,
+                duration_played INTEGER DEFAULT 0,
+                PRIMARY KEY (session_id, video_id),
+                FOREIGN KEY (session_id) REFERENCES listening_sessions(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_session_songs_session ON session_songs(session_id, play_order);
+
+            CREATE TABLE IF NOT EXISTS song_transitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                from_video_id TEXT NOT NULL,
+                to_video_id TEXT NOT NULL,
+                from_artist_id TEXT,
+                to_artist_id TEXT,
+                transition_count INTEGER DEFAULT 1,
+                completed_count INTEGER DEFAULT 0,
+                skipped_count INTEGER DEFAULT 0,
+                last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, from_video_id, to_video_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_transitions_from ON song_transitions(user_id, from_video_id);
+            CREATE INDEX IF NOT EXISTS idx_transitions_to ON song_transitions(user_id, to_video_id);
+
+            CREATE TABLE IF NOT EXISTS taste_profiles (
+                user_id INTEGER PRIMARY KEY,
+                short_term_json TEXT NOT NULL DEFAULT '{}',
+                long_term_json TEXT NOT NULL DEFAULT '{}',
+                profile_version TEXT DEFAULT 'v2.0',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS recommendation_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                mix_type TEXT NOT NULL,
+                mix_index INTEGER DEFAULT 0,
+                video_id TEXT NOT NULL,
+                position INTEGER DEFAULT 0,
+                engine_version TEXT DEFAULT 'v2.0',
+                shown_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                played BOOLEAN DEFAULT 0,
+                completed BOOLEAN DEFAULT 0,
+                liked BOOLEAN DEFAULT 0,
+                skipped BOOLEAN DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_feedback_user ON recommendation_feedback(user_id, mix_type, shown_at);
         """)
+
+        with get_db() as db:
+            cols = [row[1] for row in db.execute("PRAGMA table_info(listening_history)").fetchall()]
+            if 'skipped' not in cols:
+                db.execute("ALTER TABLE listening_history ADD COLUMN skipped BOOLEAN DEFAULT 0")
+            if 'skip_position' not in cols:
+                db.execute("ALTER TABLE listening_history ADD COLUMN skip_position INTEGER DEFAULT 0")
+            if 'session_id' not in cols:
+                db.execute("ALTER TABLE listening_history ADD COLUMN session_id INTEGER REFERENCES listening_sessions(id)")
+            if 'source' not in cols:
+                db.execute("ALTER TABLE listening_history ADD COLUMN source TEXT DEFAULT 'search'")
 
 
 @contextmanager
