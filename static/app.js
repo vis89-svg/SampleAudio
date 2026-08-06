@@ -11,6 +11,8 @@ let currentTab = "songs";
 let queue = [];
 let currentSong = null;
 let queueIndex = -1;
+let queueSource = 'other';
+let playedRecently = new Set();
 let searchCache = {};
 let recommendations = [];
 let upNextOpen = false;
@@ -108,6 +110,7 @@ function showProfilePage() {
             </div>
         `;
 
+        queueSource = 'other';
         if (mixes.mixes && mixes.mixes.length) {
             mixes.mixes.forEach((mix, mixIdx) => {
                 if (!mix.tracks || !mix.tracks.length) return;
@@ -241,6 +244,7 @@ function viewLikes() {
                 return;
             }
             queue = likes;
+            queueSource = 'other';
             resultsDiv.innerHTML = `
                 <div class="profile-section-header"><h3>&#10084;&#65039; Liked Songs (${likes.length})</h3></div>
                 ${likes.map((s, i) => `
@@ -281,6 +285,7 @@ function viewHistory() {
                 return;
             }
             queue = history;
+            queueSource = 'other';
             resultsDiv.innerHTML = `
                 <div class="profile-section-header"><h3>&#128338; Recently Played (${history.length})</h3></div>
                 ${history.map((s, i) => `
@@ -391,6 +396,7 @@ function renderSongs(songs) {
     }
 
     queue = songs;
+    queueSource = 'other';
     resultsDiv.innerHTML = songs.map((s, i) => `
         <div class="song-row" onclick="playSong(${i})">
             <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
@@ -449,6 +455,7 @@ async function openArtist(browseId) {
         const data = await resp.json();
 
         queue = data.top_songs || [];
+        queueSource = 'other';
 
         artistView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
@@ -499,6 +506,7 @@ async function openAlbum(browseId) {
         const data = await resp.json();
 
         queue = data.tracks || [];
+        queueSource = 'album';
 
         albumView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
@@ -538,6 +546,8 @@ function playSong(index) {
     queueIndex = index;
     const song = queue[index];
     currentSong = song;
+    playedRecently.add(song.id);
+    if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
 
@@ -721,10 +731,18 @@ function prevTrack() {
 }
 
 function nextTrack() {
-    if (queueIndex < queue.length - 1) {
-        playSong(queueIndex + 1);
-    } else if (recommendations.length > 0) {
-        playRecommendation(0);
+    if (queueSource === 'album') {
+        if (queueIndex < queue.length - 1) {
+            playSong(queueIndex + 1);
+        } else if (recommendations.length > 0) {
+            playRecommendation(0);
+        }
+    } else {
+        if (recommendations.length > 0) {
+            playRecommendation(0);
+        } else if (queueIndex < queue.length - 1) {
+            playSong(queueIndex + 1);
+        }
     }
 }
 
@@ -733,7 +751,9 @@ async function fetchRecommendations(videoId) {
     try {
         const resp = await fetch(`/api/recommendations?videoId=${encodeURIComponent(videoId)}&limit=25`);
         const data = await resp.json();
-        recommendations = (data.tracks || []).filter(t => t.id !== currentSong?.id);
+        recommendations = (data.tracks || [])
+            .filter(t => t.id !== currentSong?.id)
+            .filter(t => !playedRecently.has(t.id));
         if (upNextOpen) renderUpNext();
     } catch (err) {
         console.error("Recommendations failed:", err);
@@ -743,20 +763,55 @@ async function fetchRecommendations(videoId) {
 
 function renderUpNext() {
     const list = document.getElementById("upNextList");
-    if (!recommendations.length) {
-        list.innerHTML = `<div class="empty-state">No recommendations</div>`;
-        return;
+    let html = '';
+
+    if (queueSource === 'album') {
+        const remaining = queue.slice(queueIndex + 1);
+        if (remaining.length) {
+            html += remaining.map((s, i) => `
+                <div class="song-row" onclick="playSong(${queueIndex + 1 + i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                        <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                </div>
+            `).join("");
+        }
+        if (recommendations.length) {
+            html += `<div class="up-next-divider">Recommended</div>`;
+            html += recommendations.map((s, i) => `
+                <div class="song-row" onclick="playRecommendation(${i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                        <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                </div>
+            `).join("");
+        }
+    } else {
+        if (recommendations.length) {
+            html += recommendations.map((s, i) => `
+                <div class="song-row" onclick="playRecommendation(${i})">
+                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                        <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                    </div>
+                    <div class="duration">${s.duration || ''}</div>
+                </div>
+            `).join("");
+        }
     }
-    list.innerHTML = recommendations.map((s, i) => `
-        <div class="song-row" onclick="playRecommendation(${i})">
-            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-            <div class="info">
-                <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
-                <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
-            </div>
-            <div class="duration">${s.duration || ''}</div>
-        </div>
-    `).join("");
+
+    if (!html) {
+        html = `<div class="empty-state">No upcoming tracks</div>`;
+    }
+
+    list.innerHTML = html;
 }
 
 function playRecommendation(index) {
@@ -767,7 +822,10 @@ function playRecommendation(index) {
 
     queue = recommendations;
     queueIndex = index;
+    queueSource = 'other';
     currentSong = song;
+    playedRecently.add(song.id);
+    if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
 
     document.getElementById("playerTitle").textContent = song.title;
     document.getElementById("playerArtist").textContent = song.artist || "Loading...";
