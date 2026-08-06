@@ -1454,3 +1454,355 @@ header h1 {
         grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     }
 }
+
+/* === Main Navigation === */
+.main-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding: 0 4px;
+}
+
+.nav-btn {
+    padding: 10px 20px;
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.nav-btn:hover {
+    color: #fff;
+    background: #1a1a1a;
+}
+
+.nav-btn.active {
+    color: #fff;
+    background: #282828;
+}
+
+/* === Home View === */
+.home-view {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.home-greeting {
+    margin-bottom: 24px;
+}
+
+.home-greeting h2 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.home-content {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+/* === Home Section === */
+.home-section {
+    margin-bottom: 8px;
+}
+
+.home-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.home-section-header h3 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.home-section-header .section-subtitle {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 2px;
+}
+
+.home-section-header .show-all-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: color 0.15s;
+}
+
+.home-section-header .show-all-btn:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+/* === Mix Cards === */
+.mix-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 16px;
+}
+
+.mix-card {
+    background: #161616;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+    position: relative;
+}
+
+.mix-card:hover {
+    background: #282828;
+}
+
+.mix-card:hover .mix-play-btn {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.mix-card img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: #282828;
+}
+
+.mix-card .mix-title {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mix-card .mix-subtitle {
+    font-size: 0.8rem;
+    color: #888;
+    margin-top: 4px;
+}
+
+.mix-play-btn {
+    position: absolute;
+    bottom: 60px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #1db954;
+    color: #000;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: all 0.2s;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mix-play-btn:hover {
+    background: #1ed760;
+    transform: scale(1.05) translateY(0) !important;
+}
+
+/* === Quick Play Grid === */
+.quick-play-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 8px;
+}
+
+.quick-play-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: #161616;
+    border-radius: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.quick-play-item:hover {
+    background: #282828;
+}
+
+.quick-play-item img {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: #282828;
+    flex-shrink: 0;
+}
+
+.quick-play-item .qp-title {
+    font-weight: 500;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* === Horizontal Scroll Row === */
+.scroll-row {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+}
+
+.scroll-row::-webkit-scrollbar {
+    height: 6px;
+}
+
+.scroll-row::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scroll-row::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+.scroll-row .mix-card {
+    flex: 0 0 160px;
+}
+
+/* === Because You Liked Section === */
+.because-liked-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+}
+
+.because-liked-card {
+    background: #161616;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.because-liked-card:hover {
+    background: #282828;
+}
+
+.because-liked-card .seed-info {
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 8px;
+}
+
+.because-liked-card .seed-songs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.because-liked-card .seed-song {
+    font-size: 0.85rem;
+    color: #ccc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* === Album & Artist Suggestion Cards === */
+.suggestion-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+}
+
+.suggestion-card {
+    background: #161616;
+    border-radius: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+    text-align: center;
+}
+
+.suggestion-card:hover {
+    background: #282828;
+}
+
+.suggestion-card img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: #282828;
+}
+
+.suggestion-card .card-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.suggestion-card .card-subtitle {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 4px;
+}
+
+.suggestion-card img.round {
+    border-radius: 50%;
+}
+
+/* === Search View === */
+.search-view {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* === Mobile Adjustments === */
+@media (max-width: 768px) {
+    .main-nav {
+        justify-content: center;
+    }
+
+    .mix-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    }
+
+    .quick-play-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .because-liked-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .suggestion-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .home-greeting h2 {
+        font-size: 1.3rem;
+    }
+}

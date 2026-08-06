@@ -55,17 +55,31 @@
             </div>
         </header>
 
+        <nav id="mainNav" class="main-nav">
+            <button class="nav-btn active" onclick="showHome()">&#127968; Home</button>
+            <button class="nav-btn" onclick="showSearch()">&#128269; Search</button>
+        </nav>
+
         <main id="mainContent">
-            <div id="tabs" class="tabs hidden">
-                <button class="tab active" data-tab="songs" onclick="switchTab('songs')">Songs</button>
-                <button class="tab" data-tab="artists" onclick="switchTab('artists')">Artists</button>
-                <button class="tab" data-tab="albums" onclick="switchTab('albums')">Albums</button>
+            <div id="homeView" class="home-view">
+                <div id="homeGreeting" class="home-greeting"></div>
+                <div id="homeContent" class="home-content">
+                    <div class="loading">Loading your personalized feed...</div>
+                </div>
             </div>
 
-            <div id="results" class="results"></div>
+            <div id="searchView" class="search-view hidden">
+                <div id="tabs" class="tabs hidden">
+                    <button class="tab active" data-tab="songs" onclick="switchTab('songs')">Songs</button>
+                    <button class="tab" data-tab="artists" onclick="switchTab('artists')">Artists</button>
+                    <button class="tab" data-tab="albums" onclick="switchTab('albums')">Albums</button>
+                </div>
 
-            <div id="artistView" class="artist-view hidden"></div>
-            <div id="albumView" class="album-view hidden"></div>
+                <div id="results" class="results"></div>
+
+                <div id="artistView" class="artist-view hidden"></div>
+                <div id="albumView" class="album-view hidden"></div>
+            </div>
         </main>
 
         <div id="player" class="player hidden">

@@ -41,6 +41,9 @@ class HistoryEntry(BaseModel):
     played_at: Optional[str] = None
     duration_played: int = 0
     completed: bool = False
+    skipped: bool = False
+    skip_position: int = 0
+    source: Optional[str] = "search"
 
 
 class LikeEntry(BaseModel):
