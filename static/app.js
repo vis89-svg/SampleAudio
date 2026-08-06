@@ -15,6 +15,334 @@ let searchCache = {};
 let recommendations = [];
 let upNextOpen = false;
 
+/* === Auth State === */
+const TOKEN_KEY = "sampleaudio_token";
+const USER_KEY = "sampleaudio_user";
+let currentUser = null;
+let authToken = null;
+
+function initAuth() {
+    authToken = localStorage.getItem(TOKEN_KEY);
+    const userStr = localStorage.getItem(USER_KEY);
+    if (userStr) {
+        try { currentUser = JSON.parse(userStr); } catch (e) { currentUser = null; }
+    }
+    updateAuthUI();
+    if (currentUser && authToken) {
+        loadLikes();
+    }
+}
+
+function updateAuthUI() {
+    const guestEl = document.getElementById("guestAuth");
+    const userEl = document.getElementById("userAuth");
+    if (!guestEl || !userEl) return;
+
+    if (currentUser && authToken) {
+        guestEl.classList.add("hidden");
+        userEl.classList.remove("hidden");
+        const initial = currentUser.username ? currentUser.username[0].toUpperCase() : "U";
+        const iconEl = document.getElementById("userIcon");
+        const nameEl = document.getElementById("userName");
+        const dropNameEl = document.getElementById("dropdownUserName");
+        if (iconEl) iconEl.textContent = initial;
+        if (nameEl) nameEl.textContent = currentUser.username || "User";
+        if (dropNameEl) dropNameEl.textContent = "@" + (currentUser.username || "user");
+    } else {
+        guestEl.classList.remove("hidden");
+        userEl.classList.add("hidden");
+    }
+}
+
+function toggleUserMenu() {
+    const dropdown = document.getElementById("userDropdown");
+    if (dropdown) dropdown.classList.toggle("hidden");
+}
+
+function logout() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    currentUser = null;
+    authToken = null;
+    updateAuthUI();
+    toggleUserMenu();
+}
+
+async function authFetch(url, options = {}) {
+    const headers = { ...options.headers };
+    if (authToken) {
+        headers["Authorization"] = "Bearer " + authToken;
+    }
+    return fetch(url, { ...options, headers });
+}
+
+function showProfilePage() {
+    tabsDiv.classList.add("hidden");
+    artistView.classList.add("hidden");
+    albumView.classList.add("hidden");
+    resultsDiv.classList.remove("hidden");
+    resultsDiv.innerHTML = `<div class="loading">Loading your profile...</div>`;
+
+    Promise.all([
+        authFetch("/api/user/profile").then(r => r.ok ? r.json() : null),
+        authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
+        authFetch("/api/user/suggestions").then(r => r.ok ? r.json() : {based_on_likes: [], top_artists: [], top_albums: []}),
+    ]).then(([profile, mixes, suggestions]) => {
+        if (!profile) {
+            resultsDiv.innerHTML = `<div class="empty-state">Failed to load profile. <a href="#" onclick="logout(); window.location.href='/login.html'">Login again</a></div>`;
+            return;
+        }
+
+        let html = `
+            <div class="profile-header">
+                <div class="profile-avatar">${(profile.username || "U")[0].toUpperCase()}</div>
+                <div class="profile-info">
+                    <h2>${esc(profile.username)}</h2>
+                    <div class="profile-stats">
+                        <span><strong>${profile.stats?.history_count || 0}</strong> Plays</span>
+                        <span><strong>${profile.stats?.likes_count || 0}</strong> Likes</span>
+                        <span><strong>${profile.stats?.followed_artists_count || 0}</strong> Artists</span>
+                        <span><strong>${profile.stats?.followed_albums_count || 0}</strong> Albums</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        if (mixes.mixes && mixes.mixes.length) {
+            mixes.mixes.forEach((mix, mixIdx) => {
+                if (!mix.tracks || !mix.tracks.length) return;
+                const mixQueueStart = queue.length;
+                queue = queue.concat(mix.tracks);
+                html += `
+                    <div class="profile-section">
+                        <div class="profile-section-header">
+                            <h3>&#127925; ${esc(mix.name)}</h3>
+                            <span class="profile-section-subtitle">Based on: ${esc(mix.based_on.join(", "))}</span>
+                            <button class="mix-play-btn" onclick="playSong(${mixQueueStart})">&#9654; Play Mix</button>
+                        </div>
+                        <div class="profile-section-tracks">
+                            ${mix.tracks.slice(0, 5).map((t, i) => `
+                                <div class="song-row" onclick="playSong(${mixQueueStart + i})">
+                                    <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                                    <div class="info">
+                                        <div class="title">${esc(t.title)}</div>
+                                        <div class="subtitle">${esc(t.artist)}</div>
+                                    </div>
+                                    <div class="duration">${t.duration || ''}</div>
+                                </div>
+                            `).join("")}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        if (suggestions.based_on_likes && suggestions.based_on_likes.length) {
+            const sugStart = queue.length;
+            queue = queue.concat(suggestions.based_on_likes);
+            html += `
+                <div class="profile-section">
+                    <div class="profile-section-header">
+                        <h3>&#10084;&#65039; Because You Liked...</h3>
+                    </div>
+                    <div class="profile-section-tracks">
+                        ${suggestions.based_on_likes.slice(0, 5).map((t, i) => `
+                            <div class="song-row" onclick="playSong(${sugStart + i})">
+                                <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                                <div class="info">
+                                    <div class="title">${esc(t.title)}</div>
+                                    <div class="subtitle">${esc(t.artist)}</div>
+                                </div>
+                                <div class="duration">${t.duration || ''}</div>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (suggestions.top_artists && suggestions.top_artists.length) {
+            html += `
+                <div class="profile-section">
+                    <div class="profile-section-header">
+                        <h3>&#127911; Your Top Artists</h3>
+                    </div>
+                    <div class="profile-section-grid">
+                        ${suggestions.top_artists.slice(0, 6).map(a => `
+                            <div class="mini-card" onclick="openArtist('${a.artist_id || ''}')" ${!a.artist_id ? 'style="opacity:0.5;cursor:default"' : ''}>
+                                <div class="mini-card-icon">&#127908;</div>
+                                <div class="mini-card-title">${esc(a.artist)}</div>
+                                <div class="mini-card-sub">${a.play_count} plays</div>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (suggestions.top_albums && suggestions.top_albums.length) {
+            html += `
+                <div class="profile-section">
+                    <div class="profile-section-header">
+                        <h3>&#128193; Suggested Albums</h3>
+                        <span class="profile-section-subtitle">From your most played songs</span>
+                    </div>
+                    <div class="profile-section-grid">
+                        ${suggestions.top_albums.slice(0, 6).map(a => `
+                            <div class="mini-card" onclick="openAlbum('${a.album_id || ''}')" ${!a.album_id ? 'style="opacity:0.5;cursor:default"' : ''}>
+                                <div class="mini-card-icon">&#128193;</div>
+                                <div class="mini-card-title">${esc(a.album)}</div>
+                                <div class="mini-card-sub">${esc(a.artist)} &middot; ${a.play_count} plays</div>
+                            </div>
+                        `).join("")}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (!mixes.mixes?.length && !suggestions.based_on_likes?.length && !suggestions.top_artists?.length) {
+            html += `<div class="profile-empty">
+                <h3>Start Listening!</h3>
+                <p>Play some songs to get personalized Daily Mixes, artist recommendations, and album suggestions.</p>
+                <a href="/" class="mix-play-btn" style="display:inline-block;text-decoration:none">&#128269; Search Songs</a>
+            </div>`;
+        }
+
+        resultsDiv.innerHTML = html;
+    }).catch(() => {
+        resultsDiv.innerHTML = `<div class="empty-state">Failed to load profile. Please try again.</div>`;
+    });
+}
+
+function viewProfile() {
+    toggleUserMenu();
+    if (!authToken) return showCleanNoInfo("Login required");
+    showProfilePage();
+}
+
+function viewLikes() {
+    toggleUserMenu();
+    if (!authToken) return showCleanNoInfo("Login required");
+    tabsDiv.classList.add("hidden");
+    artistView.classList.add("hidden");
+    albumView.classList.add("hidden");
+    resultsDiv.classList.remove("hidden");
+    resultsDiv.innerHTML = `<div class="loading">Loading your likes...</div>`;
+
+    authFetch("/api/user/likes")
+        .then(r => {
+            if (!r.ok) throw new Error("Failed");
+            return r.json();
+        })
+        .then(data => {
+            const likes = data.likes || [];
+            if (!likes.length) {
+                resultsDiv.innerHTML = `<div class="empty-state">No liked songs yet. Click the heart on any song to save it here.</div>`;
+                return;
+            }
+            queue = likes;
+            resultsDiv.innerHTML = `
+                <div class="profile-section-header"><h3>&#10084;&#65039; Liked Songs (${likes.length})</h3></div>
+                ${likes.map((s, i) => `
+                    <div class="song-row" onclick="playSong(${i})">
+                        <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                        <div class="info">
+                            <div class="title">${esc(s.title || "Unknown")}</div>
+                            <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                        </div>
+                        <div class="duration">${s.duration || ''}</div>
+                    </div>
+                `).join("")}
+            `;
+        })
+        .catch(() => {
+            resultsDiv.innerHTML = `<div class="empty-state">Failed to load likes. Please log in again.</div>`;
+        });
+}
+
+function viewHistory() {
+    toggleUserMenu();
+    if (!authToken) return showCleanNoInfo("Login required");
+    tabsDiv.classList.add("hidden");
+    artistView.classList.add("hidden");
+    albumView.classList.add("hidden");
+    resultsDiv.classList.remove("hidden");
+    resultsDiv.innerHTML = `<div class="loading">Loading your history...</div>`;
+
+    authFetch("/api/user/history?limit=50")
+        .then(r => {
+            if (!r.ok) throw new Error("Failed");
+            return r.json();
+        })
+        .then(data => {
+            const history = data.history || [];
+            if (!history.length) {
+                resultsDiv.innerHTML = `<div class="empty-state">No listening history yet. Play some songs to build your history.</div>`;
+                return;
+            }
+            queue = history;
+            resultsDiv.innerHTML = `
+                <div class="profile-section-header"><h3>&#128338; Recently Played (${history.length})</h3></div>
+                ${history.map((s, i) => `
+                    <div class="song-row" onclick="playSong(${i})">
+                        <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                        <div class="info">
+                            <div class="title">${esc(s.title || "Unknown")}</div>
+                            <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                        </div>
+                        <div class="duration">${s.duration || ''}</div>
+                    </div>
+                `).join("")}
+            `;
+        })
+        .catch(() => {
+            resultsDiv.innerHTML = `<div class="empty-state">Failed to load history. Please log in again.</div>`;
+        });
+}
+
+function viewFollowedArtists() {
+    toggleUserMenu();
+    if (!authToken) return showCleanNoInfo("Login required");
+    tabsDiv.classList.add("hidden");
+    artistView.classList.add("hidden");
+    albumView.classList.add("hidden");
+    resultsDiv.classList.remove("hidden");
+    resultsDiv.innerHTML = `<div class="loading">Loading followed artists...</div>`;
+
+    authFetch("/api/user/followed-artists")
+        .then(r => {
+            if (!r.ok) throw new Error("Failed");
+            return r.json();
+        })
+        .then(data => {
+            const artists = data.artists || [];
+            if (!artists.length) {
+                resultsDiv.innerHTML = `<div class="empty-state">No followed artists yet. Visit an artist page and click "Follow" to add them here.</div>`;
+                return;
+            }
+            resultsDiv.innerHTML = `
+                <div class="profile-section-header"><h3>&#127908; Followed Artists (${artists.length})</h3></div>
+                <div class="profile-section-grid">
+                    ${artists.map(a => `
+                        <div class="mini-card" onclick="openArtist('${a.artist_id}')">
+                            <div class="mini-card-icon">&#127908;</div>
+                            <div class="mini-card-title">${esc(a.artist_name)}</div>
+                        </div>
+                    `).join("")}
+                </div>
+            `;
+        })
+        .catch(() => {
+            resultsDiv.innerHTML = `<div class="empty-state">Failed to load followed artists.</div>`;
+        });
+}
+
+function connectYTMusic() {
+    toggleUserMenu();
+    if (!authToken) return showCleanNoInfo("Login required");
+    showCleanNoInfo("OAuth setup coming soon — add oauth_config.json to enable");
+}
+
 /* === Sleep Timer === */
 let sleepTimerTimeout = null;
 let sleepTimerEnd = null;
@@ -249,6 +577,88 @@ function playSong(index) {
     });
 
     fetchRecommendations(song.id);
+    logPlay(song);
+    updateLikeButton();
+}
+
+function logPlay(song) {
+    if (!authToken || !song || !song.id) return;
+    authFetch("/api/user/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            video_id: song.id,
+            title: song.title || "",
+            artist: song.artist || "",
+            album: song.album || "",
+            thumbnail: song.thumbnail || "",
+            duration: song.duration || "",
+            duration_seconds: song.duration_seconds || 0,
+            artist_id: song.artist_id || "",
+            album_id: song.album_id || "",
+        }),
+    }).catch(() => {});
+}
+
+let likedSongIds = new Set();
+
+function loadLikes() {
+    if (!authToken) return;
+    authFetch("/api/user/likes")
+        .then(r => r.ok ? r.json() : {likes: []})
+        .then(data => {
+            likedSongIds = new Set((data.likes || []).map(l => l.video_id));
+            updateLikeButton();
+        })
+        .catch(() => {});
+}
+
+function toggleLike() {
+    if (!authToken) return showCleanNoInfo("Login required to like songs");
+    if (!currentSong || !currentSong.id) return;
+
+    const isLiked = likedSongIds.has(currentSong.id);
+    const method = isLiked ? "DELETE" : "POST";
+    const url = isLiked ? `/api/user/like/${currentSong.id}` : "/api/user/like";
+
+    authFetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: isLiked ? undefined : JSON.stringify({
+            video_id: currentSong.id,
+            title: currentSong.title || "",
+            artist: currentSong.artist || "",
+            album: currentSong.album || "",
+            thumbnail: currentSong.thumbnail || "",
+            duration: currentSong.duration || "",
+            duration_seconds: currentSong.duration_seconds || 0,
+            artist_id: currentSong.artist_id || "",
+            album_id: currentSong.album_id || "",
+        }),
+    }).then(r => {
+        if (r.ok) {
+            if (isLiked) {
+                likedSongIds.delete(currentSong.id);
+                showCleanNoInfo("Removed from likes");
+            } else {
+                likedSongIds.add(currentSong.id);
+                showCleanNoInfo("Added to likes");
+            }
+            updateLikeButton();
+        }
+    }).catch(() => {});
+}
+
+function updateLikeButton() {
+    const btn = document.getElementById("likeBtn");
+    if (!btn) return;
+    if (currentSong && likedSongIds.has(currentSong.id)) {
+        btn.innerHTML = "&#10084;&#65039; Liked";
+        btn.classList.add("liked");
+    } else {
+        btn.innerHTML = "&#9829; Like";
+        btn.classList.remove("liked");
+    }
 }
 
 function showCleanNote(msg) {
@@ -441,6 +851,13 @@ document.addEventListener("click", (e) => {
     if (upNextPanel && !upNextPanel.classList.contains("hidden")) {
         if (!upNextPanel.contains(e.target) && !upNextBtn.contains(e.target)) {
             toggleUpNext();
+        }
+    }
+    const userDropdown = document.getElementById("userDropdown");
+    const userMenu = document.querySelector(".user-menu");
+    if (userDropdown && !userDropdown.classList.contains("hidden")) {
+        if (!userDropdown.contains(e.target) && !userMenu.contains(e.target)) {
+            userDropdown.classList.add("hidden");
         }
     }
 });
@@ -673,3 +1090,6 @@ document.addEventListener("keydown", (e) => {
             break;
     }
 });
+
+/* === Initialize Auth on page load === */
+initAuth();

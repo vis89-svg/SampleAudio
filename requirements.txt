@@ -3,3 +3,5 @@ ytmusicapi>=1.0.0
 fastapi>=0.115.0
 uvicorn>=0.32.0
 aiofiles>=24.1.0
+bcrypt>=4.0.0
+PyJWT>=2.8.0

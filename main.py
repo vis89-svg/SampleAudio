@@ -3,7 +3,8 @@ import os
 import time
 import threading
 import mimetypes
-from fastapi import FastAPI, HTTPException, Query
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,12 +19,22 @@ from api.audio import get_audio_duration, normalize_audio, trim_audio
 from api.sponsorblock import get_skip_segments, total_skipped
 from api.jiosaavn import search_songs as search_saavn_songs
 from api.matcher import match_song
+from api.auth import register_user, authenticate_user, create_token, get_user_profile, get_current_user
+from api.user_profile import router as user_router
+from api.database import init_db
 from config import (DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL,
                     STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP,
                     JIOSAAVN_ENABLED, JIOSAAVN_QUALITY,
                     JIOSAAVN_PREFER_ON_NO_SB)
 
-app = FastAPI(title="SampleAudio")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="SampleAudio", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -74,6 +85,48 @@ def api_recommendations(videoId: str = Query(..., min_length=1),
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+# === Auth Routes ===
+
+@app.post("/api/auth/register")
+def api_register(request: dict):
+    try:
+        user = register_user(
+            username=request.get("username", ""),
+            password=request.get("password", ""),
+            email=request.get("email"),
+        )
+        token = create_token(user["user_id"], user["username"])
+        return {"access_token": token, "token_type": "bearer", "username": user["username"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/auth/login")
+def api_login(request: dict):
+    try:
+        user = authenticate_user(
+            username=request.get("username", ""),
+            password=request.get("password", ""),
+        )
+        token = create_token(user["user_id"], user["username"])
+        return {"access_token": token, "token_type": "bearer", "username": user["username"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/me")
+def api_me(user: dict = Depends(get_current_user)):
+    return get_user_profile(user["user_id"])
+
+
+# === User Profile Routes ===
+
+app.include_router(user_router)
 
 MIME_MAP = {
     ".opus": "audio/ogg",
@@ -250,6 +303,10 @@ def api_stream(video_id: str, quality: str = Query("normal"),
                     raw_path = find_audio_file(video_id, "normal")
                     if not raw_path:
                         raise HTTPException(status_code=500, detail="Download failed to start")
+                    # Safety: ensure we only trim YouTube files, never saavn files
+                    # (saavn files have different timestamps and would be corrupted)
+                    if not os.path.basename(raw_path).startswith(video_id):
+                        raise HTTPException(status_code=500, detail="Audio source mismatch — refusing to trim")
                     file_path = trim_audio(raw_path, segments)
                     event = threading.Event()
                     event.set()

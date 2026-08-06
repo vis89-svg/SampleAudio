@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SampleAudio — Login</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <div id="loginApp" class="login-container">
+        <div class="login-card">
+            <h1 class="login-logo">SampleAudio</h1>
+            <p class="login-subtitle">Sign in to get personalized recommendations</p>
+
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login" onclick="switchAuthTab('login')">Login</button>
+                <button class="auth-tab" data-tab="register" onclick="switchAuthTab('register')">Register</button>
+            </div>
+
+            <form id="loginForm" class="auth-form" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" required minlength="3" maxlength="32" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" required minlength="6" autocomplete="current-password">
+                </div>
+                <button type="submit" class="auth-btn">Login</button>
+                <div id="loginError" class="auth-error hidden"></div>
+            </form>
+
+            <form id="registerForm" class="auth-form hidden" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="regUsername">Username</label>
+                    <input type="text" id="regUsername" required minlength="3" maxlength="32" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="regEmail">Email (optional)</label>
+                    <input type="email" id="regEmail" autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" required minlength="6" autocomplete="new-password">
+                </div>
+                <button type="submit" class="auth-btn">Create Account</button>
+                <div id="registerError" class="auth-error hidden"></div>
+            </form>
+
+            <div class="auth-footer">
+                <a href="/" class="guest-link">Continue as guest</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TOKEN_KEY = 'sampleaudio_token';
+        const USER_KEY = 'sampleaudio_user';
+
+        function switchAuthTab(tab) {
+            document.querySelectorAll('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+            document.getElementById('loginForm').classList.toggle('hidden', tab !== 'login');
+            document.getElementById('registerForm').classList.toggle('hidden', tab !== 'register');
+            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('registerError').classList.add('hidden');
+        }
+
+        function showError(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.classList.remove('hidden');
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+
+            try {
+                const resp = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showError('loginError', data.detail || 'Login failed');
+                    return;
+                }
+                localStorage.setItem(TOKEN_KEY, data.access_token);
+                localStorage.setItem(USER_KEY, JSON.stringify({ username: data.username }));
+                window.location.href = '/';
+            } catch (err) {
+                showError('loginError', 'Network error. Is the server running?');
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            const username = document.getElementById('regUsername').value.trim();
+            const email = document.getElementById('regEmail').value.trim() || null;
+            const password = document.getElementById('regPassword').value;
+
+            try {
+                const resp = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, email, password }),
+                });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showError('registerError', data.detail || 'Registration failed');
+                    return;
+                }
+                localStorage.setItem(TOKEN_KEY, data.access_token);
+                localStorage.setItem(USER_KEY, JSON.stringify({ username: data.username }));
+                window.location.href = '/';
+            } catch (err) {
+                showError('registerError', 'Network error. Is the server running?');
+            }
+        }
+    </script>
+</body>
+</html>

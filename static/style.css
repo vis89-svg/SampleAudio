@@ -769,6 +769,431 @@ header h1 {
     font-weight: 600;
 }
 
+/* === Auth Section in Header === */
+.auth-section {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+}
+
+.guest-auth {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.auth-link {
+    color: #888;
+    text-decoration: none;
+    font-size: 0.85rem;
+    padding: 6px 14px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.auth-link:hover {
+    color: #fff;
+}
+
+.btn-auth {
+    background: #1db954;
+    color: #000;
+    font-weight: 600;
+}
+
+.btn-auth:hover {
+    background: #1ed760;
+    color: #000;
+}
+
+.user-auth {
+    position: relative;
+}
+
+.user-menu {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.user-menu:hover {
+    background: #282828;
+    border-color: #555;
+}
+
+.user-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #1db954;
+    color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.user-name {
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.user-dropdown {
+    position: absolute;
+    top: 44px;
+    right: 0;
+    background: #282828;
+    border-radius: 8px;
+    padding: 6px 0;
+    min-width: 200px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    z-index: 150;
+}
+
+.user-dropdown-header {
+    padding: 10px 16px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #1db954;
+}
+
+.user-dropdown-sep {
+    height: 1px;
+    background: #333;
+    margin: 4px 0;
+}
+
+.user-dropdown button {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    background: transparent;
+    color: #e0e0e0;
+    border: none;
+    text-align: left;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.user-dropdown button:hover {
+    background: #333;
+}
+
+.user-dropdown .logout-btn {
+    color: #ff6b6b;
+}
+
+#likeBtn.liked {
+    color: #1db954;
+}
+
+#likeBtn.liked:hover {
+    color: #1ed760;
+}
+
+/* === Login Page === */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.login-card {
+    background: #161616;
+    border-radius: 12px;
+    padding: 40px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.login-logo {
+    font-size: 2rem;
+    color: #1db954;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.login-subtitle {
+    text-align: center;
+    color: #888;
+    font-size: 0.9rem;
+    margin-bottom: 30px;
+}
+
+.auth-tabs {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid #222;
+    padding-bottom: 10px;
+}
+
+.auth-tab {
+    flex: 1;
+    padding: 8px 16px;
+    background: transparent;
+    color: #888;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.15s;
+}
+
+.auth-tab.active {
+    color: #1db954;
+    background: #1a1a1a;
+}
+
+.auth-tab:hover {
+    color: #fff;
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.form-group label {
+    font-size: 0.8rem;
+    color: #888;
+}
+
+.form-group input {
+    padding: 10px 14px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #0a0a0a;
+    color: #fff;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.form-group input:focus {
+    border-color: #1db954;
+}
+
+.auth-btn {
+    padding: 12px;
+    background: #1db954;
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    margin-top: 8px;
+}
+
+.auth-btn:hover {
+    background: #1ed760;
+}
+
+.auth-error {
+    background: rgba(255, 107, 107, 0.15);
+    color: #ff6b6b;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+.auth-footer {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.guest-link {
+    color: #666;
+    font-size: 0.85rem;
+    text-decoration: none;
+    transition: color 0.15s;
+}
+
+.guest-link:hover {
+    color: #1db954;
+}
+
+/* === Profile Page === */
+.profile-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 24px;
+    background: linear-gradient(135deg, #1a1a1a 0%, #282828 100%);
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.profile-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #1db954;
+    color: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.profile-info h2 {
+    font-size: 1.5rem;
+    margin-bottom: 8px;
+}
+
+.profile-stats {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.profile-stats span {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.profile-stats strong {
+    color: #fff;
+    font-weight: 600;
+}
+
+.profile-section {
+    margin-bottom: 24px;
+}
+
+.profile-section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.profile-section-header h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
+.profile-section-subtitle {
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.mix-play-btn {
+    margin-left: auto;
+    padding: 8px 16px;
+    background: #1db954;
+    color: #000;
+    border: none;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.mix-play-btn:hover {
+    background: #1ed760;
+}
+
+.profile-section-tracks {
+    background: #161616;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.profile-section-tracks .song-row:first-child {
+    border-radius: 8px 8px 0 0;
+}
+
+.profile-section-tracks .song-row:last-child {
+    border-radius: 0 0 8px 8px;
+}
+
+.profile-section-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+
+.mini-card {
+    background: #161616;
+    border-radius: 8px;
+    padding: 16px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.mini-card:hover {
+    background: #282828;
+}
+
+.mini-card-icon {
+    font-size: 2rem;
+    margin-bottom: 8px;
+}
+
+.mini-card-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mini-card-sub {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.profile-empty {
+    text-align: center;
+    padding: 60px 20px;
+}
+
+.profile-empty h3 {
+    font-size: 1.3rem;
+    margin-bottom: 12px;
+}
+
+.profile-empty p {
+    color: #888;
+    margin-bottom: 20px;
+}
+
 /* === Up Next Panel === */
 .up-next-panel {
     position: fixed;
@@ -893,5 +1318,36 @@ header h1 {
     @keyframes slideIn {
         from { transform: translateY(100%); }
         to { transform: translateY(0); }
+    }
+    .auth-section {
+        position: static;
+        margin-top: 15px;
+    }
+    .guest-auth {
+        justify-content: center;
+    }
+    .user-auth {
+        display: flex;
+        justify-content: center;
+    }
+    .login-card {
+        padding: 30px 24px;
+    }
+    .profile-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    .profile-stats {
+        justify-content: center;
+    }
+    .profile-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .mix-play-btn {
+        margin-left: 0;
+    }
+    .profile-section-grid {
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
     }
 }

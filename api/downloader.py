@@ -150,15 +150,15 @@ def find_audio_file(video_id: str, quality: str = "normal") -> str | None:
                     return path
         return None
 
-    for base in [video_id, saavn_id or ""]:
-        if not base:
-            continue
-        for suffix in ["_norm", "_trim", ""]:
-            for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
-                path = os.path.join(DOWNLOAD_DIR, f"{base}{suffix}.{ext}")
-                if os.path.exists(path) and os.path.getsize(path) > 0:
-                    if not is_processing(path):
-                        return path
+    # quality == "normal": only search YouTube video_id files.
+    # Saavn files must NOT be returned here — they have different timelines
+    # and would be trimmed with wrong SponsorBlock timestamps.
+    for suffix in ["_norm", "_trim", ""]:
+        for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
+            path = os.path.join(DOWNLOAD_DIR, f"{video_id}{suffix}.{ext}")
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                if not is_processing(path):
+                    return path
     return None
 
 

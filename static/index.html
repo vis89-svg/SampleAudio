@@ -26,6 +26,33 @@
                     Clean Audio (no chatter)
                 </label>
             </div>
+            <div id="authSection" class="auth-section">
+                <div id="guestAuth" class="guest-auth">
+                    <a href="/login.html" class="auth-link">Login</a>
+                    <a href="/login.html?tab=register" class="auth-link btn-auth">Register</a>
+                </div>
+                <div id="userAuth" class="user-auth hidden">
+                    <div class="user-menu" onclick="toggleUserMenu()">
+                        <span id="userIcon" class="user-icon">U</span>
+                        <span id="userName" class="user-name"></span>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                    </div>
+                    <div id="userDropdown" class="user-dropdown hidden">
+                        <div class="user-dropdown-header">
+                            <span id="dropdownUserName"></span>
+                        </div>
+                        <div class="user-dropdown-sep"></div>
+                        <button onclick="viewProfile()">&#128100; Profile</button>
+                        <button onclick="viewLikes()">&#9829; Liked Songs</button>
+                        <button onclick="viewHistory()">&#128338; Recently Played</button>
+                        <button onclick="viewFollowedArtists()">&#127908; Followed Artists</button>
+                        <div class="user-dropdown-sep"></div>
+                        <button onclick="connectYTMusic()" id="connectYTBtn">&#127925; Connect YouTube Music</button>
+                        <div class="user-dropdown-sep"></div>
+                        <button onclick="logout()" class="logout-btn">Logout</button>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <main id="mainContent">
@@ -56,6 +83,7 @@
                 </button>
                 <div id="kebabMenu" class="kebab-menu hidden">
                     <button onclick="openNowPlaying()">&#9654; Now Playing</button>
+                    <button onclick="toggleLike()" id="likeBtn">&#9829; Like</button>
                     <div class="kebab-sep"></div>
                     <button onclick="viewArtist()">&#127908; View Artist</button>
                     <button onclick="viewAlbum()">&#128193; View Album</button>

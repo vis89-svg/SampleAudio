@@ -42,3 +42,15 @@ JIOSAAVN_PREFER_ON_NO_SB = True   # use JioSaavn when SponsorBlock has no data
 # === Server ===
 HOST = "0.0.0.0"
 PORT = 8000
+
+# === Database ===
+DATABASE_PATH = os.path.join(os.path.dirname(__file__), "sampleaudio.db")
+
+# === JWT Auth ===
+JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-" + os.urandom(16).hex())
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = 24
+
+# === OAuth ===
+OAUTH_CREDENTIALS_PATH = os.path.join(os.path.dirname(__file__), "oauth_config.json")
+OAUTH_TOKENS_DIR = os.path.join(os.path.dirname(__file__), "oauth")

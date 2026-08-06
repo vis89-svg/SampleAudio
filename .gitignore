@@ -1,0 +1,34 @@
+# Dependencies
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OAuth tokens and credentials
+oauth/
+oauth_config.json
+
+# Downloaded files
+downloads/*.m4a
+downloads/*.webm
+downloads/*.opus
+downloads/*.mp3
+downloads/.saavn_map.json
+
+# Thumbnail cache
+cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
