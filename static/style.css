@@ -259,6 +259,72 @@ header h1 {
     flex-shrink: 0;
 }
 
+.song-kebab-btn {
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s, background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.song-row:hover .song-kebab-btn {
+    opacity: 1;
+}
+
+.song-kebab-btn:hover {
+    color: #fff;
+    background: #333;
+}
+
+.song-menu {
+    background: #282828;
+    border-radius: 8px;
+    padding: 6px 0;
+    min-width: 150px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+.song-menu button {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    background: transparent;
+    color: #e0e0e0;
+    border: none;
+    text-align: left;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.song-menu button:hover {
+    background: #333;
+}
+
+.song-remove-btn {
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    transition: color 0.15s, background 0.15s;
+}
+
+.song-remove-btn:hover {
+    color: #ff6b6b;
+    background: #333;
+}
+
 .artist-view, .album-view {
     padding: 20px 0;
 }

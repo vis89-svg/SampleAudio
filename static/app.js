@@ -13,6 +13,7 @@ let currentSong = null;
 let queueIndex = -1;
 let queueSource = 'other';
 let playedRecently = new Set();
+let userQueue = [];
 let searchCache = {};
 let recommendations = [];
 let upNextOpen = false;
@@ -132,6 +133,7 @@ function showProfilePage() {
                                         <div class="subtitle">${esc(t.artist)}</div>
                                     </div>
                                     <div class="duration">${t.duration || ''}</div>
+                                    ${kebabBtn(t)}
                                 </div>
                             `).join("")}
                         </div>
@@ -157,6 +159,7 @@ function showProfilePage() {
                                     <div class="subtitle">${esc(t.artist)}</div>
                                 </div>
                                 <div class="duration">${t.duration || ''}</div>
+                                ${kebabBtn(t)}
                             </div>
                         `).join("")}
                     </div>
@@ -255,6 +258,7 @@ function viewLikes() {
                             <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
                         </div>
                         <div class="duration">${s.duration || ''}</div>
+                        ${kebabBtn(s)}
                     </div>
                 `).join("")}
             `;
@@ -296,6 +300,7 @@ function viewHistory() {
                             <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
                         </div>
                         <div class="duration">${s.duration || ''}</div>
+                        ${kebabBtn(s)}
                     </div>
                 `).join("")}
             `;
@@ -405,6 +410,7 @@ function renderSongs(songs) {
                 <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
             </div>
             <div class="duration">${s.duration || ''}</div>
+            ${kebabBtn(s)}
         </div>
     `).join("");
 }
@@ -474,6 +480,7 @@ async function openArtist(browseId) {
                         <div class="subtitle">${esc(s.artist)}</div>
                     </div>
                     <div class="duration">${s.duration || ''}</div>
+                    ${kebabBtn(s)}
                 </div>
             `).join("")}
             ${data.albums && data.albums.length ? `
@@ -526,6 +533,7 @@ async function openAlbum(browseId) {
                         <div class="subtitle">${esc(t.artist)}</div>
                     </div>
                     <div class="duration">${t.duration || ''}</div>
+                    ${kebabBtn(t)}
                 </div>
             `).join("")}
         `;
@@ -548,6 +556,106 @@ function playSong(index) {
     currentSong = song;
     playedRecently.add(song.id);
     if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
+    const quality = document.getElementById("qualitySelect").value;
+    const clean = document.getElementById("cleanToggle").checked;
+
+    document.getElementById("playerTitle").textContent = song.title;
+    document.getElementById("playerArtist").textContent = song.artist || "Loading...";
+    document.getElementById("playerThumb").src = song.thumbnail || '';
+    document.getElementById("playerAlbumName").textContent = song.album || '';
+    document.getElementById("playerAlbumName").style.pointerEvents = song.album_id ? "cursor" : "default";
+    playerDiv.classList.remove("hidden");
+    document.getElementById("playPauseBtn").classList.add("buffering");
+    hideCleanNote();
+    closeKebabMenu();
+
+    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.load();
+
+    if (quality === "saavn") {
+        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
+    } else if (clean) {
+        fetch(`/api/sponsorblock/${song.id}/segments`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+                if (data && data.total_skipped > 0) {
+                    showCleanNote(`Clean audio: removed ${fmtTime(data.total_skipped)} of non-music content`);
+                }
+            })
+            .catch(() => {});
+    }
+
+    audio.play().then(() => {
+        updatePlayIcon();
+        document.getElementById("playerArtist").textContent = song.artist;
+    }).catch(err => {
+        console.error("Play failed:", err);
+        updatePlayIcon();
+        document.getElementById("playerArtist").textContent = "Failed to load - click Play to retry";
+    });
+
+    fetchRecommendations(song.id);
+    logPlay(song);
+    updateLikeButton();
+}
+
+function playNextSong(song) {
+    if (userQueue.length >= 50) {
+        showCleanNoInfo("Queue is full (50 songs max)");
+        return;
+    }
+    userQueue.push(song);
+    showCleanNoInfo("Added to play next (" + userQueue.length + " in queue)");
+}
+
+function removeFromQueue(index) {
+    userQueue.splice(index, 1);
+    if (upNextOpen) renderUpNext();
+}
+
+function clearQueue() {
+    userQueue = [];
+    if (upNextOpen) renderUpNext();
+}
+
+let currentMenuSong = null;
+
+function kebabBtn(song) {
+    const json = JSON.stringify(song).replace(/"/g, '&quot;');
+    return `<button class="song-kebab-btn" data-song="${json}" onclick="event.stopPropagation(); showSongMenu(this)" title="More options">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
+    </button>`;
+}
+
+function showSongMenu(btn) {
+    closeSongMenu();
+    const song = JSON.parse(btn.dataset.song);
+    currentMenuSong = song;
+
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement("div");
+    menu.id = "songMenu";
+    menu.className = "song-menu";
+    menu.style.position = "fixed";
+    menu.style.top = (rect.bottom + 4) + "px";
+    menu.style.left = Math.min(rect.left - 120, window.innerWidth - 160) + "px";
+    menu.style.zIndex = "300";
+    menu.innerHTML = `
+        <button onclick="playNextSong(currentMenuSong); closeSongMenu();">
+            &#9658; Play Next
+        </button>
+    `;
+    document.body.appendChild(menu);
+}
+
+function closeSongMenu() {
+    const existing = document.getElementById("songMenu");
+    if (existing) existing.remove();
+    currentMenuSong = null;
+}
+
+function playSongDirect(song) {
+    currentSong = song;
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
 
@@ -731,7 +839,12 @@ function prevTrack() {
 }
 
 function nextTrack() {
-    if (queueSource === 'album') {
+    if (userQueue.length > 0) {
+        const song = userQueue.shift();
+        playedRecently.add(song.id);
+        if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
+        playSongDirect(song);
+    } else if (queueSource === 'album') {
         if (queueIndex < queue.length - 1) {
             playSong(queueIndex + 1);
         } else if (recommendations.length > 0) {
@@ -765,6 +878,21 @@ function renderUpNext() {
     const list = document.getElementById("upNextList");
     let html = '';
 
+    if (userQueue.length > 0) {
+        html += `<div class="up-next-divider">Next in Queue (${userQueue.length})</div>`;
+        html += userQueue.map((s, i) => `
+            <div class="song-row" onclick="playSongDirect(userQueue[${i}])">
+                <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="info">
+                    <div class="title">${esc(s.title)}${s.isExplicit ? '<span class="explicit-badge">E</span>' : ''}</div>
+                    <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+                </div>
+                <div class="duration">${s.duration || ''}</div>
+                <button class="song-remove-btn" onclick="event.stopPropagation(); removeFromQueue(${i})" title="Remove">&#10005;</button>
+            </div>
+        `).join("");
+    }
+
     if (queueSource === 'album') {
         const remaining = queue.slice(queueIndex + 1);
         if (remaining.length) {
@@ -789,6 +917,7 @@ function renderUpNext() {
                         <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
                     </div>
                     <div class="duration">${s.duration || ''}</div>
+                    ${kebabBtn(s)}
                 </div>
             `).join("");
         }
@@ -802,6 +931,7 @@ function renderUpNext() {
                         <div class="subtitle">${esc(s.artist)}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
                     </div>
                     <div class="duration">${s.duration || ''}</div>
+                    ${kebabBtn(s)}
                 </div>
             `).join("");
         }
@@ -917,6 +1047,11 @@ document.addEventListener("click", (e) => {
         if (!userDropdown.contains(e.target) && !userMenu.contains(e.target)) {
             userDropdown.classList.add("hidden");
         }
+    }
+    const songMenu = document.getElementById("songMenu");
+    const songKebabBtn = document.querySelector(".song-kebab-btn:hover");
+    if (songMenu && !songMenu.contains(e.target) && !e.target.closest(".song-kebab-btn")) {
+        closeSongMenu();
     }
 });
 
