@@ -124,10 +124,66 @@ def get_artist(browse_id: str) -> dict:
     return {
         "id": browse_id,
         "name": artist.get("name", ""),
+        "channel_id": artist.get("channelId", ""),
         "thumbnail": _thumb_url(artist.get("thumbnails", [])),
         "top_songs": top_songs,
         "albums": albums,
+        "songs_browse_id": artist.get("songs", {}).get("browseId", ""),
+        "albums_params": artist.get("albums", {}).get("params", ""),
+        "total_songs": artist.get("songs", {}).get("total", len(top_songs)),
+        "total_albums": artist.get("albums", {}).get("total", len(albums)),
     }
+
+
+def get_artist_all_songs(browse_id: str) -> list[dict]:
+    """Fetch ALL songs for an artist using the songs browseId as a playlist."""
+    yt = _get_ytmusic()
+    artist = yt.get_artist(browse_id)
+    songs_browse_id = artist.get("songs", {}).get("browseId", "")
+    if not songs_browse_id:
+        return []
+
+    playlist = yt.get_playlist(songs_browse_id, limit=500)
+    songs = []
+    for t in playlist.get("tracks", []):
+        if not t.get("videoId"):
+            continue
+        artists_list = t.get("artists", [])
+        album = t.get("album", {}) or {}
+        songs.append({
+            "id": t.get("videoId", ""),
+            "title": t.get("title", ""),
+            "artist": ", ".join(a.get("name", "") for a in artists_list) if artists_list else artist.get("name", ""),
+            "artist_id": artists_list[0].get("id", "") if artists_list else "",
+            "album": album.get("name", ""),
+            "album_id": album.get("id", ""),
+            "duration": t.get("duration", ""),
+            "duration_seconds": t.get("duration_seconds", 0),
+            "thumbnail": _thumb_url(t.get("thumbnails", [])),
+            "url": f"https://music.youtube.com/watch?v={t.get('videoId', '')}",
+        })
+    return songs
+
+
+def get_artist_all_albums(channel_id: str, params: str) -> list[dict]:
+    """Fetch ALL albums for an artist using get_artist_albums."""
+    if not params or not channel_id:
+        return []
+    yt = _get_ytmusic()
+    try:
+        albums_raw = yt.get_artist_albums(channel_id, params, limit=200)
+        albums = []
+        for a in albums_raw:
+            albums.append({
+                "id": a.get("browseId", ""),
+                "title": a.get("title", ""),
+                "year": a.get("year", ""),
+                "type": a.get("type", ""),
+                "thumbnail": _thumb_url(a.get("thumbnails", [])),
+            })
+        return albums
+    except Exception:
+        return []
 
 
 def get_song_details(video_id: str) -> dict:

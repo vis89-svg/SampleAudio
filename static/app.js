@@ -437,12 +437,38 @@ function switchTab(tab) {
     if (cached) renderResults(cached);
 }
 
+let currentArtistId = null;
+
+function renderSongRows(songs, startIndex = 0) {
+    return songs.map((s, i) => `
+        <div class="song-row" onclick="playSong(${startIndex + i})">
+            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <div class="info">
+                <div class="title">${esc(s.title)}</div>
+                <div class="subtitle">${esc(s.artist)}</div>
+            </div>
+            <div class="duration">${s.duration || ''}</div>
+        </div>
+    `).join("");
+}
+
+function renderAlbumCards(albums) {
+    return albums.map(a => `
+        <div class="album-card" onclick="openAlbum('${a.id}')">
+            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <div class="title">${esc(a.title)}</div>
+            <div class="artist-name">${a.year || ''}</div>
+        </div>
+    `).join("");
+}
+
 async function openArtist(browseId) {
     showLoading();
     tabsDiv.classList.add("hidden");
     resultsDiv.classList.add("hidden");
     albumView.classList.add("hidden");
     artistView.classList.remove("hidden");
+    currentArtistId = browseId;
 
     try {
         const resp = await fetch(`/api/artist/${browseId}`);
@@ -459,31 +485,55 @@ async function openArtist(browseId) {
                 </div>
             </div>
             <div class="section-title">Top Songs</div>
-            ${queue.map((s, i) => `
-                <div class="song-row" onclick="playSong(${i})">
-                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                    <div class="info">
-                        <div class="title">${esc(s.title)}</div>
-                        <div class="subtitle">${esc(s.artist)}</div>
-                    </div>
-                    <div class="duration">${s.duration || ''}</div>
-                </div>
-            `).join("")}
+            <div id="artistSongsContainer">${renderSongRows(queue)}</div>
+            <button class="show-more-btn" id="showAllSongsBtn" onclick="loadAllArtistSongs()">
+                Show All Songs
+            </button>
             ${data.albums && data.albums.length ? `
                 <div class="section-title" style="margin-top:24px">Albums</div>
-                <div class="results">
-                    ${data.albums.map(a => `
-                        <div class="album-card" onclick="openAlbum('${a.id}')">
-                            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                            <div class="title">${esc(a.title)}</div>
-                            <div class="artist-name">${a.year || ''}</div>
-                        </div>
-                    `).join("")}
-                </div>
+                <div class="results" id="artistAlbumsContainer">${renderAlbumCards(data.albums)}</div>
+                <button class="show-more-btn" id="showAllAlbumsBtn" onclick="loadAllArtistAlbums()">
+                    Show All Albums
+                </button>
             ` : ''}
         `;
     } catch (err) {
         artistView.innerHTML = `<div class="empty-state">Failed to load artist</div>`;
+    }
+}
+
+async function loadAllArtistSongs() {
+    const btn = document.getElementById("showAllSongsBtn");
+    btn.textContent = "Loading...";
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch(`/api/artist/${currentArtistId}/songs`);
+        const data = await resp.json();
+
+        queue = data.songs || [];
+        document.getElementById("artistSongsContainer").innerHTML = renderSongRows(queue);
+        btn.remove();
+    } catch (err) {
+        btn.textContent = "Failed to load";
+        btn.disabled = false;
+    }
+}
+
+async function loadAllArtistAlbums() {
+    const btn = document.getElementById("showAllAlbumsBtn");
+    btn.textContent = "Loading...";
+    btn.disabled = true;
+
+    try {
+        const resp = await fetch(`/api/artist/${currentArtistId}/albums`);
+        const data = await resp.json();
+
+        document.getElementById("artistAlbumsContainer").innerHTML = renderAlbumCards(data.albums || []);
+        btn.remove();
+    } catch (err) {
+        btn.textContent = "Failed to load";
+        btn.disabled = false;
     }
 }
 

@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.search import search_songs, search_artists, search_albums, search_all
 from api.search import get_artist, get_album, get_song_details, get_recommendations
+from api.search import get_artist_all_songs, get_artist_all_albums
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
                             active_downloads, get_saavn_id,
@@ -64,6 +65,24 @@ def api_search_songs(q: str = Query(..., min_length=1), limit: int = Query(10, g
 def api_artist(browse_id: str):
     try:
         return get_artist(browse_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artist/{browse_id}/songs")
+def api_artist_songs(browse_id: str):
+    try:
+        songs = get_artist_all_songs(browse_id)
+        return {"songs": songs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artist/{browse_id}/albums")
+def api_artist_albums(browse_id: str):
+    try:
+        artist = get_artist(browse_id)
+        return {"albums": artist.get("albums", [])}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
