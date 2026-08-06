@@ -81,7 +81,7 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
     scored_songs = get_scored_songs(user_id)
     profile = get_taste_profile(user_id)
 
-    if not clusters and not scored_songs:
+    if not clusters:
         return _fallback_mix(user_id)
 
     scored_by_artist = _index_songs_by_artist(scored_songs)
@@ -106,6 +106,9 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
                 "tracks": [_format_track(t) for t in tracks],
                 "engine_version": "v2.0",
             })
+
+    if not mixes:
+        return _fallback_mix(user_id)
 
     return mixes
 
