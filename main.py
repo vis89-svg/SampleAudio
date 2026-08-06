@@ -14,7 +14,7 @@ from api.search import get_artist, get_album, get_song_details, get_recommendati
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
                             active_downloads, get_saavn_id,
-                            start_saavn_streaming_download)
+                            start_saavn_streaming_download, MIN_AUDIO_SIZE)
 from api.audio import get_audio_duration, normalize_audio, trim_audio
 from api.sponsorblock import get_skip_segments, total_skipped
 from api.jiosaavn import search_songs as search_saavn_songs
@@ -224,12 +224,12 @@ def _try_jiosaavn_stream(video_id: str):
 
     deadline = time.time() + STREAM_WAIT_TIMEOUT
     while time.time() < deadline:
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        if os.path.exists(file_path) and os.path.getsize(file_path) >= MIN_AUDIO_SIZE:
             break
         if entry["event"].is_set():
             break
         time.sleep(STREAM_POLL_INTERVAL)
-    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+    if not os.path.exists(file_path) or os.path.getsize(file_path) < MIN_AUDIO_SIZE:
         return None
     return (file_path, entry["event"])
 

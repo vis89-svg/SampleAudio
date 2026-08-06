@@ -1,9 +1,23 @@
 """Audio downloader using yt-dlp and SpotiFLAC"""
+import glob
 import json
 import os
 import threading
 import yt_dlp
 from config import DOWNLOAD_DIR, SLEEP_BETWEEN_DOWNLOADS, MAX_DOWNLOAD_SPEED
+
+# Files smaller than this are almost certainly failed-download stubs
+# (e.g. error pages), never real audio. Skip them and delete them.
+MIN_AUDIO_SIZE = 50 * 1024
+
+
+def _delete_stubs(pattern: str) -> None:
+    for path in glob.glob(pattern):
+        try:
+            if os.path.getsize(path) < MIN_AUDIO_SIZE:
+                os.remove(path)
+        except OSError:
+            pass
 
 # video_id -> dict(thread, event, file_path, error)
 active_downloads: dict[str, dict] = {}
@@ -134,18 +148,18 @@ def find_audio_file(video_id: str, quality: str = "normal") -> str | None:
     if quality == "saavn":
         if saavn_id:
             path = os.path.join(DOWNLOAD_DIR, f"{saavn_id}.m4a")
-            if os.path.exists(path) and os.path.getsize(path) > 0:
+            if os.path.exists(path) and os.path.getsize(path) >= MIN_AUDIO_SIZE:
                 if not is_processing(path):
                     return path
         for suffix in ["_trim", ""]:
             for ext in ["m4a", "opus", "mp3", "ogg", "wav", "webm"]:
                 path = os.path.join(DOWNLOAD_DIR, f"{video_id}{suffix}.{ext}")
-                if os.path.exists(path) and os.path.getsize(path) > 0:
+                if os.path.exists(path) and os.path.getsize(path) >= MIN_AUDIO_SIZE:
                     if not is_processing(path):
                         return path
         for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
             path = os.path.join(DOWNLOAD_DIR, f"{video_id}_norm.{ext}")
-            if os.path.exists(path) and os.path.getsize(path) > 0:
+            if os.path.exists(path) and os.path.getsize(path) >= MIN_AUDIO_SIZE:
                 if not is_processing(path):
                     return path
         return None
@@ -156,7 +170,7 @@ def find_audio_file(video_id: str, quality: str = "normal") -> str | None:
     for suffix in ["_norm", "_trim", ""]:
         for ext in ["opus", "m4a", "mp3", "ogg", "wav", "webm"]:
             path = os.path.join(DOWNLOAD_DIR, f"{video_id}{suffix}.{ext}")
-            if os.path.exists(path) and os.path.getsize(path) > 0:
+            if os.path.exists(path) and os.path.getsize(path) >= MIN_AUDIO_SIZE:
                 if not is_processing(path):
                     return path
     return None
@@ -173,6 +187,7 @@ def _run_stream_download(video_id: str, output_template: str,
         pass
     finally:
         completion_event.set()
+        _delete_stubs(os.path.join(DOWNLOAD_DIR, f"{video_id}.*"))
 
 
 def start_streaming_download(video_id: str) -> dict:
@@ -221,6 +236,7 @@ def _run_saavn_download(saavn_url: str, song_id: str, quality: str,
         pass
     finally:
         completion_event.set()
+        _delete_stubs(os.path.join(DOWNLOAD_DIR, f"{song_id}.*"))
 
 
 def start_saavn_streaming_download(video_id: str, saavn_url: str,

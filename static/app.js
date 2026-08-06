@@ -396,6 +396,7 @@ function renderResults(data) {
 }
 
 function renderSongs(songs) {
+    console.log('[DEBUG] renderSongs called, count:', songs.length);
     if (!songs.length) {
         resultsDiv.innerHTML = `<div class="empty-state">No songs found</div>`;
         return;
@@ -403,6 +404,7 @@ function renderSongs(songs) {
 
     queue = songs;
     queueSource = 'other';
+    console.log('[DEBUG] queue set, first song id:', songs[0].id);
     resultsDiv.innerHTML = songs.map((s, i) => `
         <div class="song-row" onclick="playSong(${i})">
             <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
@@ -551,9 +553,14 @@ function backToResults() {
 }
 
 function playSong(index) {
-    if (index < 0 || index >= queue.length) return;
+    console.log('[DEBUG] playSong called, index:', index, 'queue.length:', queue.length);
+    if (index < 0 || index >= queue.length) {
+        console.log('[DEBUG] playSong: index out of range');
+        return;
+    }
     queueIndex = index;
     const song = queue[index];
+    console.log('[DEBUG] playSong song:', JSON.stringify(song));
     currentSong = song;
     playedRecently.add(song.id);
     if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
@@ -1212,7 +1219,7 @@ audio.addEventListener("playing", () => {
 });
 
 audio.addEventListener("error", (e) => {
-    console.error("Audio error:", e);
+    console.error("[DEBUG] Audio error:", e, "src:", audio.src, "error code:", audio.error ? audio.error.code : "none");
     updatePlayIcon();
     document.getElementById("playerArtist").textContent = "Error - click Play to retry";
 });
@@ -1448,14 +1455,22 @@ function renderNewArtists(artists) {
 
 /* === Play Mix from Home === */
 async function playMix(type, index) {
+    console.log('[DEBUG] playMix called, type:', type, 'index:', index);
     let data;
     if (type === "daily") {
         const resp = await authFetch("/api/user/daily-mix");
         data = await resp.json();
+        console.log('[DEBUG] playMix daily data keys:', Object.keys(data));
         if (data.mixes && data.mixes[index]) {
             queue = data.mixes[index].tracks;
             queueSource = 'daily-mix';
+            console.log('[DEBUG] playMix queue set, length:', queue.length);
+            if (queue.length > 0) {
+                console.log('[DEBUG] playMix first track:', JSON.stringify(queue[0]));
+            }
             playSong(0);
+        } else {
+            console.log('[DEBUG] playMix: no mixes found, data:', data);
         }
     } else if (type === "discovery") {
         const resp = await authFetch("/api/user/mixes/discovery");
