@@ -1,11 +1,95 @@
 /* SampleAudio — Frontend Logic */
-const audio = document.getElementById("audioElement");
-const searchInput = document.getElementById("searchInput");
-const resultsDiv = document.getElementById("results");
-const tabsDiv = document.getElementById("tabs");
-const artistView = document.getElementById("artistView");
-const albumView = document.getElementById("albumView");
-const playerDiv = document.getElementById("player");
+let audio = null;
+let searchInput = null;
+let resultsDiv = null;
+let tabsDiv = null;
+let artistView = null;
+let albumView = null;
+let playerDiv = null;
+
+function cacheDomElements() {
+    audio = document.getElementById("audioElement");
+    searchInput = document.getElementById("searchInput");
+    resultsDiv = document.getElementById("results");
+    tabsDiv = document.getElementById("tabs");
+    artistView = document.getElementById("artistView");
+    albumView = document.getElementById("albumView");
+    playerDiv = document.getElementById("player");
+}
+
+function attachEventListeners() {
+    if (searchInput) {
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") doSearch();
+        });
+    }
+    if (audio) {
+        audio.addEventListener("ended", () => {
+            songCompleted = true;
+            nextTrack();
+        });
+
+        audio.addEventListener("timeupdate", () => {
+            if (audio.duration) {
+                const pct = (audio.currentTime / audio.duration) * 100;
+                document.getElementById("progressBar").value = pct;
+                document.getElementById("currentTime").textContent = fmtTime(audio.currentTime);
+                document.getElementById("totalTime").textContent = fmtTime(audio.duration);
+                const npBar = document.getElementById("npProgressBar");
+                const npCur = document.getElementById("npCurrentTime");
+                const npTot = document.getElementById("npTotalTime");
+                if (npBar) npBar.value = pct;
+                if (npCur) npCur.textContent = fmtTime(audio.currentTime);
+                if (npTot) npTot.textContent = fmtTime(audio.duration);
+            }
+        });
+
+        audio.addEventListener("loadedmetadata", () => {
+            if (queueIndex >= 0 && queue[queueIndex]) {
+                document.getElementById("playerArtist").textContent = queue[queueIndex].artist;
+                updatePlayIcon();
+            }
+        });
+
+        audio.addEventListener("waiting", () => {
+            const btn = document.getElementById("playPauseBtn");
+            if (btn) btn.classList.add("buffering");
+        });
+
+        audio.addEventListener("playing", () => {
+            const btn = document.getElementById("playPauseBtn");
+            if (btn) btn.classList.remove("buffering");
+            updatePlayIcon();
+        });
+
+        let audioErrorRetried = false;
+
+        audio.addEventListener("error", (e) => {
+            console.error("[DEBUG] Audio error:", e, "src:", audio.src, "error code:", audio.error ? audio.error.code : "none");
+            updatePlayIcon();
+            if (!audioErrorRetried && currentSong && currentSong.id) {
+                audioErrorRetried = true;
+                document.getElementById("playerArtist").textContent = "Still loading stream - retrying...";
+                document.getElementById("playPauseBtn").classList.add("buffering");
+                const q = document.getElementById("qualitySelect").value;
+                const c = document.getElementById("cleanToggle").checked;
+                setTimeout(() => {
+                    audio.src = streamUrl(currentSong, q, c);
+                    audio.load();
+                    audio.play().catch(() => {
+                        updatePlayIcon();
+                        document.getElementById("playerArtist").textContent = "Error - click Play to retry";
+                    });
+                }, 800);
+                return;
+            }
+            document.getElementById("playerArtist").textContent = "Error - click Play to retry";
+        });
+    }
+}
+
+// Cache DOM elements immediately
+cacheDomElements();
 
 let currentTab = "songs";
 let queue = [];
@@ -20,6 +104,8 @@ let upNextOpen = false;
 let mainContext = "home";
 let playHistory = [];
 let historyNavigating = false;
+let songCompleted = false;
+let songStartTime = 0;
 
 function pushToHistory(song) {
     if (!song || !song.id) return;
@@ -379,10 +465,6 @@ let sleepTimerTimeout = null;
 let sleepTimerEnd = null;
 let sleepTimerInterval = null;
 
-searchInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") doSearch();
-});
-
 async function doSearch() {
     const q = searchInput.value.trim();
     if (!q) return;
@@ -601,7 +683,10 @@ function playSong(index) {
         console.log('[DEBUG] playSong: index out of range');
         return;
     }
-    if (currentSong && currentSong.id !== queue[index].id && !historyNavigating) pushToHistory(currentSong);
+    if (currentSong && currentSong.id !== queue[index].id && !historyNavigating) {
+        logPlayCompletion(currentSong, songCompleted, !songCompleted);
+        pushToHistory(currentSong);
+    }
     if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked') {
         clearStaleQueueItems();
     }
@@ -610,6 +695,8 @@ function playSong(index) {
     const song = queue[index];
     console.log('[DEBUG] playSong song:', JSON.stringify(song));
     currentSong = song;
+    songCompleted = false;
+    songStartTime = Date.now();
     playedRecently.add(song.id);
     if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
     const quality = document.getElementById("qualitySelect").value;
@@ -711,9 +798,14 @@ function closeSongMenu() {
 }
 
 function playSongDirect(song) {
-    if (currentSong && currentSong.id !== song.id && !historyNavigating) pushToHistory(currentSong);
+    if (currentSong && currentSong.id !== song.id && !historyNavigating) {
+        logPlayCompletion(currentSong, songCompleted, !songCompleted);
+        pushToHistory(currentSong);
+    }
     audioErrorRetried = false;
     currentSong = song;
+    songCompleted = false;
+    songStartTime = Date.now();
     if (userQueue.length > 0) {
         const qIdx = userQueue.findIndex(s => s.id === song.id);
         if (qIdx >= 0) {
@@ -764,8 +856,12 @@ function playSongDirect(song) {
     updateLikeButton();
 }
 
-function logPlay(song) {
+function logPlay(song, extras = {}) {
     if (!authToken || !song || !song.id) return;
+    const durationPlayed = extras.duration_played || 0;
+    const completed = extras.completed || false;
+    const skipped = extras.skipped || false;
+    const skipPosition = extras.skip_position || 0;
     authFetch("/api/user/history", {
         method: "POST",
         silent401: true,
@@ -780,8 +876,19 @@ function logPlay(song) {
             duration_seconds: song.duration_seconds || 0,
             artist_id: song.artist_id || "",
             album_id: song.album_id || "",
+            duration_played: durationPlayed,
+            completed: completed,
+            skipped: skipped,
+            skip_position: skipPosition,
         }),
     }).catch(() => {});
+}
+
+function logPlayCompletion(song, completed, skipped) {
+    if (!song || !song.id) return;
+    const durationPlayed = completed ? (song.duration_seconds || 0) : Math.floor(audio.currentTime || 0);
+    const skipPosition = skipped ? Math.floor(audio.currentTime || 0) : 0;
+    logPlay(song, { duration_played: durationPlayed, completed, skipped, skip_position: skipPosition });
 }
 
 let likedSongIds = new Set();
@@ -1026,7 +1133,10 @@ function renderUpNext() {
 
 function playRecommendation(index) {
     if (index < 0 || index >= recommendations.length) return;
-    if (currentSong && currentSong.id !== recommendations[index].id && !historyNavigating) pushToHistory(currentSong);
+    if (currentSong && currentSong.id !== recommendations[index].id && !historyNavigating) {
+        logPlayCompletion(currentSong, songCompleted, !songCompleted);
+        pushToHistory(currentSong);
+    }
     audioErrorRetried = false;
     const song = recommendations[index];
     const quality = document.getElementById("qualitySelect").value;
@@ -1036,6 +1146,8 @@ function playRecommendation(index) {
     queueIndex = index;
     queueSource = 'other';
     currentSong = song;
+    songCompleted = false;
+    songStartTime = Date.now();
     playedRecently.add(song.id);
     if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
 
@@ -1075,6 +1187,8 @@ function playRecommendation(index) {
     });
 
     fetchRecommendations(song.id);
+    logPlay(song);
+    updateLikeButton();
 }
 
 function toggleUpNext() {
@@ -1321,10 +1435,6 @@ audio.addEventListener("error", (e) => {
 function playAudio(song) {
     audioErrorRetried = false;
 }
-
-audio.addEventListener("ended", () => {
-    nextTrack();
-});
 
 function seekAudio(pct) {
     if (audio.duration) {
@@ -1633,7 +1743,34 @@ async function playBecauseLiked(index) {
 }
 
 /* === Initialize Auth on page load === */
-initAuth();
-if (authToken) {
-    loadHomeFeed();
+function safeInitAuth() {
+    try {
+        cacheDomElements();
+        attachEventListeners();
+        initAuth();
+        if (authToken) {
+            loadHomeFeed();
+        }
+    } catch (err) {
+        console.error('Auth initialization failed:', err);
+        // Fallback: retry after a short delay
+        setTimeout(() => {
+            try {
+                cacheDomElements();
+                attachEventListeners();
+                initAuth();
+                if (authToken) {
+                    loadHomeFeed();
+                }
+            } catch (e) {
+                console.error('Auth retry failed:', e);
+            }
+        }, 100);
+    }
 }
+
+// Run immediately (DOM should be ready since script is at end of body)
+safeInitAuth();
+
+// Also run on DOMContentLoaded as fallback
+document.addEventListener('DOMContentLoaded', safeInitAuth);
