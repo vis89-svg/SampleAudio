@@ -552,12 +552,23 @@ function backToResults() {
     tabsDiv.classList.remove("hidden");
 }
 
+function streamUrl(song, quality, clean) {
+    const p = new URLSearchParams();
+    p.set("quality", quality);
+    if (clean) p.set("clean", "true");
+    if (song.title) p.set("title", song.title);
+    if (song.artist) p.set("artist", song.artist);
+    if (song.duration_seconds) p.set("dur", song.duration_seconds);
+    return `/api/stream/${encodeURIComponent(song.id)}?${p.toString()}`;
+}
+
 function playSong(index) {
     console.log('[DEBUG] playSong called, index:', index, 'queue.length:', queue.length);
     if (index < 0 || index >= queue.length) {
         console.log('[DEBUG] playSong: index out of range');
         return;
     }
+    audioErrorRetried = false;
     queueIndex = index;
     const song = queue[index];
     console.log('[DEBUG] playSong song:', JSON.stringify(song));
@@ -577,7 +588,7 @@ function playSong(index) {
     hideCleanNote();
     closeKebabMenu();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.src = streamUrl(song, quality, clean);
     audio.load();
 
     if (quality === "saavn") {
@@ -663,6 +674,7 @@ function closeSongMenu() {
 }
 
 function playSongDirect(song) {
+    audioErrorRetried = false;
     currentSong = song;
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
@@ -677,7 +689,7 @@ function playSongDirect(song) {
     hideCleanNote();
     closeKebabMenu();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.src = streamUrl(song, quality, clean);
     audio.load();
 
     if (quality === "saavn") {
@@ -954,6 +966,7 @@ function renderUpNext() {
 
 function playRecommendation(index) {
     if (index < 0 || index >= recommendations.length) return;
+    audioErrorRetried = false;
     const song = recommendations[index];
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
@@ -975,7 +988,7 @@ function playRecommendation(index) {
     hideCleanNote();
     closeKebabMenu();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.src = streamUrl(song, quality, clean);
     audio.load();
 
     if (quality === "saavn") {
@@ -1218,11 +1231,35 @@ audio.addEventListener("playing", () => {
     updatePlayIcon();
 });
 
+let audioErrorRetried = false;
+
 audio.addEventListener("error", (e) => {
     console.error("[DEBUG] Audio error:", e, "src:", audio.src, "error code:", audio.error ? audio.error.code : "none");
     updatePlayIcon();
+    // First delivery may time out while the backend prepares the stream.
+    // Give it one automatic retry before declaring the song unplayable.
+    if (!audioErrorRetried && currentSong && currentSong.id) {
+        audioErrorRetried = true;
+        document.getElementById("playerArtist").textContent = "Still loading stream - retrying...";
+        document.getElementById("playPauseBtn").classList.add("buffering");
+        const q = document.getElementById("qualitySelect").value;
+        const c = document.getElementById("cleanToggle").checked;
+        setTimeout(() => {
+            audio.src = streamUrl(currentSong, q, c);
+            audio.load();
+            audio.play().catch(() => {
+                updatePlayIcon();
+                document.getElementById("playerArtist").textContent = "Error - click Play to retry";
+            });
+        }, 800);
+        return;
+    }
     document.getElementById("playerArtist").textContent = "Error - click Play to retry";
 });
+
+function playAudio(song) {
+    audioErrorRetried = false;
+}
 
 audio.addEventListener("ended", () => {
     nextTrack();

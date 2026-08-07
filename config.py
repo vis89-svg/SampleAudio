@@ -38,6 +38,7 @@ JIOSAAVN_QUALITY = "320"  # "320" or "128"
 JIOSAAVN_SEARCH_LIMIT = 5
 JIOSAAVN_DURATION_TOLERANCE = 5  # seconds tolerance when matching durations
 JIOSAAVN_PREFER_ON_NO_SB = True   # use JioSaavn when SponsorBlock has no data
+JIOSAAVN_STREAM_START_TIMEOUT = 15  # max secs to wait for saavn first bytes before falling back to YouTube
 
 # === Server ===
 HOST = "0.0.0.0"

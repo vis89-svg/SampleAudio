@@ -1,10 +1,14 @@
 """YouTube Music search via ytmusicapi"""
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from ytmusicapi import YTMusic
 
 _yt: Optional[YTMusic] = None
+
+_song_details_cache: dict[str, dict] = {}
+_song_details_lock = threading.Lock()
 
 
 def _get_ytmusic() -> YTMusic:
@@ -131,7 +135,16 @@ def get_artist(browse_id: str) -> dict:
 
 
 def get_song_details(video_id: str) -> dict:
-    """Get title/artist/duration for a single video (for cross-source matching)."""
+    """Get title/artist/duration for a single video (for cross-source matching).
+
+    Results are cached in-memory: calling this synchronously on the stream
+    path used to take 60-90s per song (ytmusicapi.get_song is slow), which
+    made the first play of any song hang for minutes.
+    """
+    with _song_details_lock:
+        cached = _song_details_cache.get(video_id)
+        if cached is not None:
+            return cached
     try:
         r = _get_ytmusic().get_song(video_id)
     except Exception:
@@ -146,12 +159,15 @@ def get_song_details(video_id: str) -> dict:
         pass
     if not title:
         return {}
-    return {
+    result = {
         "id": video_id,
         "title": title,
         "artist": artist,
         "duration_seconds": duration_seconds,
     }
+    with _song_details_lock:
+        _song_details_cache[video_id] = result
+    return result
 
 
 def get_recommendations(video_id: str, limit: int = 25) -> list[dict]:
