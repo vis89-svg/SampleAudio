@@ -22,21 +22,44 @@ router = APIRouter(prefix="/api/user", tags=["user"])
 
 @router.post("/history")
 async def log_play(entry: HistoryEntry, user: dict = Depends(get_current_user)):
-    """Log a song play to listening history and publish event."""
+    """Log a song play to listening history and publish event.
+
+    A play start inserts a row; a completion/skip updates that latest row
+    instead of inserting a duplicate so one play never yields two entries.
+    """
+    updated = False
+    is_update = entry.completed or entry.skipped or entry.duration_played > 0
     with get_db() as db:
-        db.execute(
-            """INSERT INTO listening_history
-               (user_id, video_id, title, artist, album, thumbnail, duration,
-                duration_seconds, artist_id, album_id, duration_played, completed,
-                skipped, skip_position, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user["user_id"], entry.video_id, entry.title, entry.artist,
-             entry.album, entry.thumbnail, entry.duration, entry.duration_seconds,
-             entry.artist_id, entry.album_id, entry.duration_played, entry.completed,
-             entry.skipped, entry.skip_position, entry.source or "search"),
-        )
+        if is_update:
+            row = db.execute(
+                """SELECT id FROM listening_history
+                   WHERE user_id = ? AND video_id = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (user["user_id"], entry.video_id),
+            ).fetchone()
+            if row:
+                db.execute(
+                    """UPDATE listening_history
+                       SET duration_played = ?, completed = ?, skipped = ?, skip_position = ?
+                       WHERE id = ?""",
+                    (entry.duration_played, int(entry.completed), int(entry.skipped),
+                     entry.skip_position, row["id"]),
+                )
+                updated = True
+        if not updated:
+            db.execute(
+                """INSERT INTO listening_history
+                   (user_id, video_id, title, artist, album, thumbnail, duration,
+                    duration_seconds, artist_id, album_id, duration_played, completed,
+                    skipped, skip_position, source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user["user_id"], entry.video_id, entry.title, entry.artist,
+                 entry.album, entry.thumbnail, entry.duration, entry.duration_seconds,
+                 entry.artist_id, entry.album_id, entry.duration_played, entry.completed,
+                 entry.skipped, entry.skip_position, entry.source or "search"),
+            )
     await publish_play_event(user["user_id"], entry.model_dump())
-    return {"status": "ok"}
+    return {"status": "ok", "updated": updated}
 
 
 @router.get("/history")
