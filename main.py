@@ -15,7 +15,7 @@ from api.search import get_artist_all_songs, get_artist_all_albums
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
                             active_downloads, get_saavn_id,
-                            start_saavn_streaming_download)
+                            start_saavn_streaming_download, MIN_AUDIO_SIZE)
 from api.audio import get_audio_duration, normalize_audio, trim_audio
 from api.sponsorblock import get_skip_segments, total_skipped
 from api.jiosaavn import search_songs as search_saavn_songs
@@ -26,7 +26,8 @@ from api.database import init_db
 from config import (DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL,
                     STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP,
                     JIOSAAVN_ENABLED, JIOSAAVN_QUALITY,
-                    JIOSAAVN_PREFER_ON_NO_SB)
+                    JIOSAAVN_PREFER_ON_NO_SB,
+                    JIOSAAVN_STREAM_START_TIMEOUT)
 
 
 @asynccontextmanager
@@ -158,14 +159,26 @@ MIME_MAP = {
 }
 
 
-def iter_file_progressive(file_path: str, completion_event: threading.Event,
-                          max_stall: int = 120):
+def iter_file_progressive(file_path: str | None, completion_event: threading.Event,
+                          max_stall: int = 120, first_byte_timeout: int = 90):
     """Yield file chunks while the file is being written by a background download.
 
-    Reads from the file as it grows. Returns once the completion event is set
-    and EOF is reached. Gives up after `max_stall` empty polls (~60s) to avoid
-    hanging forever if the download dies silently.
+    If the file doesn't exist yet (download hasn't produced bytes), poll for up
+    to `first_byte_timeout` seconds so the HTTP response starts immediately
+    instead of blocking the request for minutes. Then read from the file as it
+    grows. Returns once the completion event is set and EOF is reached. Gives
+    up after `max_stall` empty polls (~60s) to avoid hanging forever if the
+    download dies silently.
     """
+    waited = 0
+    while file_path is None or not os.path.exists(file_path):
+        if completion_event.is_set():
+            return
+        waited += STREAM_POLL_INTERVAL
+        if waited > first_byte_timeout:
+            return
+        time.sleep(STREAM_POLL_INTERVAL)
+
     stalled = 0
     with open(file_path, "rb") as f:
         while True:
@@ -193,14 +206,17 @@ def _normalize_in_background(raw_path: str, segments: list | None = None) -> Non
     threading.Thread(target=run, daemon=True).start()
 
 
-def _normalize_when_done(raw_path: str, completion_event: threading.Event,
+def _normalize_when_done(video_id: str, completion_event: threading.Event,
                          segments: list | None) -> None:
     def run():
+        completion_event.wait()
+        raw_path = find_audio_file(video_id, "normal")
+        if not raw_path:
+            return
         with _normalize_lock:
             if raw_path in _normalize_queued:
                 return
             _normalize_queued.add(raw_path)
-        completion_event.wait()
         _normalize_in_background(raw_path, segments)
     threading.Thread(target=run, daemon=True).start()
 
@@ -209,16 +225,35 @@ _normalize_queued: set[str] = set()
 _normalize_lock = threading.Lock()
 
 
-def _try_jiosaavn_stream(video_id: str):
+def _hints_to_details(title: str | None, artist: str | None,
+                      dur: int | None) -> dict | None:
+    """Build a song-details dict from the frontend's query params, when given."""
+    if not title or not artist:
+        return None
+    return {
+        "title": title,
+        "artist": artist,
+        "duration_seconds": int(dur or 0),
+    }
+
+
+def _try_jiosaavn_stream(video_id: str,
+                         details: dict | None = None,
+                         fetch_details: bool = True):
     """Try to stream this song from JioSaavn (clean 320kbps fallback).
 
     Matches the YouTube video to a JioSaavn result by title/artist/duration,
     then starts a progressive saavn download. Returns (file_path, event) or None.
+
+    `details` (from the frontend's title/artist/dur query params) avoids the
+    slow ytmusicapi.get_song call that used to stall playback for minutes.
+    Only fetched as a last resort when no hints are available.
     """
     if not JIOSAAVN_ENABLED:
         return None
 
-    details = get_song_details(video_id)
+    if not details and fetch_details:
+        details = get_song_details(video_id)
     if not details:
         return None
 
@@ -241,22 +276,27 @@ def _try_jiosaavn_stream(video_id: str):
         video_id, match["url"], match["id"], JIOSAAVN_QUALITY)
     file_path = entry["file_path"]
 
-    deadline = time.time() + STREAM_WAIT_TIMEOUT
+    deadline = time.time() + JIOSAAVN_STREAM_START_TIMEOUT
     while time.time() < deadline:
-        if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        if os.path.exists(file_path) and os.path.getsize(file_path) >= MIN_AUDIO_SIZE:
             break
         if entry["event"].is_set():
             break
         time.sleep(STREAM_POLL_INTERVAL)
-    if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+    if not os.path.exists(file_path) or os.path.getsize(file_path) < MIN_AUDIO_SIZE:
         return None
     return (file_path, entry["event"])
 
 
 @app.get("/api/stream/{video_id}")
 def api_stream(video_id: str, quality: str = Query("normal"),
-               clean: bool = Query(True)):
+               clean: bool = Query(True),
+               title: str | None = Query(None),
+               artist: str | None = Query(None),
+               dur: int | None = Query(None)):
     try:
+        details = _hints_to_details(title, artist, dur)
+
         # If a download is still in progress for this video, reuse its event so
         # seek/reload requests continue streaming instead of treating a partial
         # file as complete.
@@ -290,85 +330,65 @@ def api_stream(video_id: str, quality: str = Query("normal"),
             elif quality == "saavn":
                 # Explicit JioSaavn 320kbps: always clean, no chatter, no trim.
                 # If JioSaavn has no match, silently fall back to YouTube audio.
-                saavn = _try_jiosaavn_stream(video_id)
+                saavn = _try_jiosaavn_stream(video_id, details)
                 if saavn:
                     file_path, event = saavn
                 else:
                     segments = get_skip_segments(video_id) if clean else []
                     active = start_streaming_download(video_id)
                     event = active["event"]
-                    deadline = time.time() + STREAM_WAIT_TIMEOUT
-                    while time.time() < deadline:
-                        file_path = find_audio_file(video_id, quality)
-                        if file_path or event.is_set():
-                            break
-                        time.sleep(STREAM_POLL_INTERVAL)
-                    if not file_path:
-                        raise HTTPException(status_code=500, detail="Download failed to start")
-                    if event.is_set():
-                        _normalize_in_background(file_path, segments)
-                    else:
-                        _normalize_when_done(file_path, event, segments)
+                    file_path = None
+                    _normalize_when_done(video_id, event, segments)
             else:
-                # Check SponsorBlock first: if this song has significant
-                # non-music content, wait for the full download and serve the
-                # trimmed clean version instead of streaming raw audio.
-                segments = get_skip_segments(video_id) if clean else []
-                needs_trim = total_skipped(segments) >= SPONSORBLOCK_MIN_TOTAL_SKIP
-
-                if needs_trim:
-                    active = start_streaming_download(video_id)
-                    active["event"].wait(STREAM_WAIT_TIMEOUT)
-                    raw_path = find_audio_file(video_id, "normal")
-                    if not raw_path:
-                        raise HTTPException(status_code=500, detail="Download failed to start")
-                    # Safety: ensure we only trim YouTube files, never saavn files
-                    # (saavn files have different timestamps and would be corrupted)
-                    if not os.path.basename(raw_path).startswith(video_id):
-                        raise HTTPException(status_code=500, detail="Audio source mismatch — refusing to trim")
-                    file_path = trim_audio(raw_path, segments)
-                    event = threading.Event()
-                    event.set()
-                    # Full trim + loudness normalization runs in background from
-                    # the RAW file (segment timestamps reference raw timeline)
-                    # so future plays serve the fully processed _norm file.
-                    _normalize_in_background(raw_path, segments)
+                # Normal quality. Prefer clean sources in order:
+                # 1) JioSaavn 320kbps — already clean + mastered, no trim or
+                #    re-encode needed, and no SponsorBlock lookup required
+                #    (it also streams progressively, so first bytes arrive fast).
+                # 2) YouTube audio — check SponsorBlock for significant
+                #    non-music content; if present, wait for the full download
+                #    and serve the trimmed clean version.
+                saavn = None
+                if clean and JIOSAAVN_PREFER_ON_NO_SB:
+                    saavn = _try_jiosaavn_stream(video_id, details)
+                if saavn:
+                    file_path, event = saavn
                 else:
-                    # No SponsorBlock data: prefer JioSaavn's clean 320kbps
-                    # source over raw YouTube audio (which may contain chatter).
-                    # Saavn files are already clean + mastered, so no trim or
-                    # loudness re-encode is needed. (Re-encoding 320k AAC to
-                    # 128k opus would only degrade quality.)
-                    saavn = None
-                    if clean and JIOSAAVN_PREFER_ON_NO_SB:
-                        saavn = _try_jiosaavn_stream(video_id)
-                    if saavn:
-                        file_path, event = saavn
+                    segments = get_skip_segments(video_id) if clean else []
+                    _needs_trim = total_skipped(segments) >= SPONSORBLOCK_MIN_TOTAL_SKIP
+
+                    if _needs_trim:
+                        active = start_streaming_download(video_id)
+                        active["event"].wait(STREAM_WAIT_TIMEOUT)
+                        raw_path = find_audio_file(video_id, "normal")
+                        if not raw_path:
+                            raise HTTPException(status_code=500, detail="Download failed to start")
+                        # Safety: ensure we only trim YouTube files, never saavn files
+                        # (saavn files have different timestamps and would be corrupted)
+                        if not os.path.basename(raw_path).startswith(video_id):
+                            raise HTTPException(status_code=500, detail="Audio source mismatch — refusing to trim")
+                        file_path = trim_audio(raw_path, segments)
+                        event = threading.Event()
+                        event.set()
+                        # Full trim + loudness normalization runs in background from
+                        # the RAW file (segment timestamps reference raw timeline)
+                        # so future plays serve the fully processed _norm file.
+                        _normalize_in_background(raw_path, segments)
                     else:
                         active = start_streaming_download(video_id)
                         event = active["event"]
+                        file_path = None
+                        _normalize_when_done(video_id, event, segments)
 
-                        deadline = time.time() + STREAM_WAIT_TIMEOUT
-                        while time.time() < deadline:
-                            file_path = find_audio_file(video_id, quality)
-                            if file_path:
-                                break
-                            if event.is_set():
-                                break
-                            time.sleep(STREAM_POLL_INTERVAL)
+        ext = ""
+        # Unknown extension: the YouTube progressive stream (stream opts) prefers
+        # opus, which lands in a .webm container. Serve as webm, which players
+        # accept broadly.
+        mime = "audio/webm"
+        if file_path:
+            ext = os.path.splitext(file_path)[1].lower()
+            mime = MIME_MAP.get(ext) or mimetypes.guess_type(file_path)[0] or "audio/ogg"
 
-                        if not file_path:
-                            raise HTTPException(status_code=500, detail="Download failed to start")
-
-                        if event.is_set():
-                            _normalize_in_background(file_path, segments)
-                        else:
-                            _normalize_when_done(file_path, event, segments)
-
-        ext = os.path.splitext(file_path)[1].lower()
-        mime = MIME_MAP.get(ext) or mimetypes.guess_type(file_path)[0] or "audio/ogg"
-
-        if event.is_set():
+        if event.is_set() and file_path and os.path.exists(file_path):
             headers = {
                 "Content-Length": str(os.path.getsize(file_path)),
                 "Accept-Ranges": "bytes",

@@ -76,7 +76,18 @@ async function authFetch(url, options = {}) {
     if (authToken) {
         headers["Authorization"] = "Bearer " + authToken;
     }
-    return fetch(url, { ...options, headers });
+    const resp = await fetch(url, { ...options, headers });
+    if (resp.status === 401 && authToken && !options.silent401) {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        currentUser = null;
+        authToken = null;
+        updateAuthUI();
+        const dropdown = document.getElementById("userDropdown");
+        if (dropdown) dropdown.classList.add("hidden");
+        showCleanNoInfo("Session expired - please login again");
+    }
+    return resp;
 }
 
 function showProfilePage() {
@@ -396,6 +407,7 @@ function renderResults(data) {
 }
 
 function renderSongs(songs) {
+    console.log('[DEBUG] renderSongs called, count:', songs.length);
     if (!songs.length) {
         resultsDiv.innerHTML = `<div class="empty-state">No songs found</div>`;
         return;
@@ -403,6 +415,7 @@ function renderSongs(songs) {
 
     queue = songs;
     queueSource = 'other';
+    console.log('[DEBUG] queue set, first song id:', songs[0].id);
     resultsDiv.innerHTML = songs.map((s, i) => `
         <div class="song-row" onclick="playSong(${i})">
             <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
@@ -550,10 +563,26 @@ function backToResults() {
     tabsDiv.classList.remove("hidden");
 }
 
+function streamUrl(song, quality, clean) {
+    const p = new URLSearchParams();
+    p.set("quality", quality);
+    if (clean) p.set("clean", "true");
+    if (song.title) p.set("title", song.title);
+    if (song.artist) p.set("artist", song.artist);
+    if (song.duration_seconds) p.set("dur", song.duration_seconds);
+    return `/api/stream/${encodeURIComponent(song.id)}?${p.toString()}`;
+}
+
 function playSong(index) {
-    if (index < 0 || index >= queue.length) return;
+    console.log('[DEBUG] playSong called, index:', index, 'queue.length:', queue.length);
+    if (index < 0 || index >= queue.length) {
+        console.log('[DEBUG] playSong: index out of range');
+        return;
+    }
+    audioErrorRetried = false;
     queueIndex = index;
     const song = queue[index];
+    console.log('[DEBUG] playSong song:', JSON.stringify(song));
     currentSong = song;
     playedRecently.add(song.id);
     if (playedRecently.size > 5) playedRecently.delete([...playedRecently][0]);
@@ -570,7 +599,7 @@ function playSong(index) {
     hideCleanNote();
     closeKebabMenu();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.src = streamUrl(song, quality, clean);
     audio.load();
 
     if (quality === "saavn") {
@@ -656,6 +685,7 @@ function closeSongMenu() {
 }
 
 function playSongDirect(song) {
+    audioErrorRetried = false;
     currentSong = song;
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
@@ -670,7 +700,7 @@ function playSongDirect(song) {
     hideCleanNote();
     closeKebabMenu();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.src = streamUrl(song, quality, clean);
     audio.load();
 
     if (quality === "saavn") {
@@ -704,6 +734,7 @@ function logPlay(song) {
     if (!authToken || !song || !song.id) return;
     authFetch("/api/user/history", {
         method: "POST",
+        silent401: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             video_id: song.id,
@@ -764,8 +795,12 @@ function toggleLike() {
                 showCleanNoInfo("Added to likes");
             }
             updateLikeButton();
+        } else if (r.status !== 401) {
+            showCleanNoInfo("Failed to update like. Please try again.");
         }
-    }).catch(() => {});
+    }).catch(() => {
+        showCleanNoInfo("Failed to update like. Please try again.");
+    });
 }
 
 function updateLikeButton() {
@@ -947,6 +982,7 @@ function renderUpNext() {
 
 function playRecommendation(index) {
     if (index < 0 || index >= recommendations.length) return;
+    audioErrorRetried = false;
     const song = recommendations[index];
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
@@ -968,7 +1004,7 @@ function playRecommendation(index) {
     hideCleanNote();
     closeKebabMenu();
 
-    audio.src = `/api/stream/${song.id}?quality=${quality}&clean=${clean}`;
+    audio.src = streamUrl(song, quality, clean);
     audio.load();
 
     if (quality === "saavn") {
@@ -1211,11 +1247,35 @@ audio.addEventListener("playing", () => {
     updatePlayIcon();
 });
 
+let audioErrorRetried = false;
+
 audio.addEventListener("error", (e) => {
-    console.error("Audio error:", e);
+    console.error("[DEBUG] Audio error:", e, "src:", audio.src, "error code:", audio.error ? audio.error.code : "none");
     updatePlayIcon();
+    // First delivery may time out while the backend prepares the stream.
+    // Give it one automatic retry before declaring the song unplayable.
+    if (!audioErrorRetried && currentSong && currentSong.id) {
+        audioErrorRetried = true;
+        document.getElementById("playerArtist").textContent = "Still loading stream - retrying...";
+        document.getElementById("playPauseBtn").classList.add("buffering");
+        const q = document.getElementById("qualitySelect").value;
+        const c = document.getElementById("cleanToggle").checked;
+        setTimeout(() => {
+            audio.src = streamUrl(currentSong, q, c);
+            audio.load();
+            audio.play().catch(() => {
+                updatePlayIcon();
+                document.getElementById("playerArtist").textContent = "Error - click Play to retry";
+            });
+        }, 800);
+        return;
+    }
     document.getElementById("playerArtist").textContent = "Error - click Play to retry";
 });
+
+function playAudio(song) {
+    audioErrorRetried = false;
+}
 
 audio.addEventListener("ended", () => {
     nextTrack();
@@ -1328,9 +1388,9 @@ async function loadHomeFeed() {
         const [dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
             authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
             authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
-            authFetch("/api/user/mixes/because-you-liked").then(r => r.json()),
-            authFetch("/api/user/mixes/albums").then(r => r.json()),
-            authFetch("/api/user/mixes/new-artists").then(r => r.json()),
+            authFetch("/api/user/mixes/because-you-liked").then(r => r.ok ? r.json() : {suggestions: []}),
+            authFetch("/api/user/mixes/albums").then(r => r.ok ? r.json() : {albums: []}),
+            authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
         ]);
 
         let html = "";
@@ -1448,14 +1508,22 @@ function renderNewArtists(artists) {
 
 /* === Play Mix from Home === */
 async function playMix(type, index) {
+    console.log('[DEBUG] playMix called, type:', type, 'index:', index);
     let data;
     if (type === "daily") {
         const resp = await authFetch("/api/user/daily-mix");
         data = await resp.json();
+        console.log('[DEBUG] playMix daily data keys:', Object.keys(data));
         if (data.mixes && data.mixes[index]) {
             queue = data.mixes[index].tracks;
             queueSource = 'daily-mix';
+            console.log('[DEBUG] playMix queue set, length:', queue.length);
+            if (queue.length > 0) {
+                console.log('[DEBUG] playMix first track:', JSON.stringify(queue[0]));
+            }
             playSong(0);
+        } else {
+            console.log('[DEBUG] playMix: no mixes found, data:', data);
         }
     } else if (type === "discovery") {
         const resp = await authFetch("/api/user/mixes/discovery");

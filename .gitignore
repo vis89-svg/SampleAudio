@@ -11,6 +11,9 @@ venv/
 *.sqlite
 *.sqlite3
 
+# JWT signing secret (persisted across restarts)
+.jwt_secret
+
 # OAuth tokens and credentials
 oauth/
 oauth_config.json
