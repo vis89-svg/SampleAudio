@@ -17,7 +17,7 @@ def cluster_sessions(user_id: int) -> list[dict]:
     sessions = get_recent_sessions(user_id, limit=50)
 
     if len(sessions) < MIN_CLUSTERS:
-        return [{"id": i, "sessions": [s]} for i, s in enumerate(sessions)]
+        return _singleton_clusters(sessions)
 
     import json
     fingerprints = []
@@ -28,7 +28,7 @@ def cluster_sessions(user_id: int) -> list[dict]:
             fingerprints.append(fp)
 
     if len(fingerprints) < MIN_CLUSTERS:
-        return [{"id": i, "sessions": [s]} for i, s in enumerate(sessions)]
+        return _singleton_clusters(sessions)
 
     threshold = INITIAL_THRESHOLD
 
@@ -53,6 +53,28 @@ def cluster_sessions(user_id: int) -> list[dict]:
         })
 
     return result
+
+
+def _singleton_clusters(sessions: list[dict]) -> list[dict]:
+    """One cluster per session (no meaningful grouping yet), each carrying a
+    centroid so Daily-Mix generation can pull familiar tracks from it."""
+    import json
+    clusters = []
+    for i, s in enumerate(sessions):
+        fp = {}
+        if s.get("fingerprint_json"):
+            try:
+                fp = json.loads(s["fingerprint_json"])
+            except Exception:
+                fp = {}
+        fp["_session_id"] = s["id"]
+        clusters.append({
+            "id": i,
+            "sessions": [s],
+            "centroid": _compute_centroid([fp]),
+            "size": 1,
+        })
+    return clusters
 
 
 def _agglomerative_cluster(fingerprints: list[dict], threshold: float) -> list[list[dict]]:

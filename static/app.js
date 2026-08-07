@@ -106,6 +106,11 @@ let playHistory = [];
 let historyNavigating = false;
 let songCompleted = false;
 let songStartTime = 0;
+let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [] };
+let homeFeedExpanded = new Set();
+const RECENT_LIMIT = 10;
+const ALBUM_LIMIT = 6;
+const ARTIST_LIMIT = 6;
 
 function pushToHistory(song) {
     if (!song || !song.id) return;
@@ -1549,7 +1554,8 @@ async function loadHomeFeed() {
 }
 
 async function fetchHomeFeed() {
-    const [dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
+    const [recent, dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
+        authFetch("/api/user/recently-played").then(r => r.ok ? r.json() : {tracks: []}),
         authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
         authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
         authFetch("/api/user/mixes/because-you-liked").then(r => r.ok ? r.json() : {suggestions: []}),
@@ -1557,26 +1563,38 @@ async function fetchHomeFeed() {
         authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
     ]);
 
+    homeFeedData.recent = (recent.tracks || []).map(t => ({ ...t, id: t.id || t.video_id }));
+    homeFeedData.mixes = dailyMixes.mixes || [];
+    homeFeedData.discovery = discovery.mix || null;
+    homeFeedData.because = becauseLiked.suggestions || [];
+    homeFeedData.albums = albums.albums || [];
+    homeFeedData.artists = artists.artists || [];
+    homeFeedExpanded.clear();
+
     let html = "";
 
-    if (dailyMixes.mixes && dailyMixes.mixes.length) {
-        html += renderDailyMixes(dailyMixes.mixes);
+    if (homeFeedData.recent.length) {
+        html += renderRecentlyPlayedSection(false);
     }
 
-    if (discovery.mix && discovery.mix.tracks && discovery.mix.tracks.length) {
-        html += renderDiscoveryMix(discovery.mix);
+    if (homeFeedData.mixes.length) {
+        html += renderDailyMixesSection(false);
     }
 
-    if (becauseLiked.suggestions && becauseLiked.suggestions.length) {
-        html += renderBecauseYouLiked(becauseLiked.suggestions);
+    if (homeFeedData.discovery && homeFeedData.discovery.tracks && homeFeedData.discovery.tracks.length) {
+        html += renderDiscoveryMixSection(false);
     }
 
-    if (albums.albums && albums.albums.length) {
-        html += renderAlbumSuggestions(albums.albums);
+    if (homeFeedData.because.length) {
+        html += renderBecauseYouLikedSection(false);
     }
 
-    if (artists.artists && artists.artists.length) {
-        html += renderNewArtists(artists.artists);
+    if (homeFeedData.albums.length) {
+        html += renderAlbumSuggestionsSection(false);
+    }
+
+    if (homeFeedData.artists.length) {
+        html += renderNewArtistsSection(false);
     }
 
     if (!html) {
@@ -1607,58 +1625,146 @@ function refreshHomeFeedQuiet() {
     }, 1500);
 }
 
-function renderDailyMixes(mixes) {
-    let html = `<div class="home-section"><div class="home-section-header"><h3>&#127925; Daily Mixes</h3></div><div class="mix-grid">`;
-    mixes.forEach((mix, i) => {
-        const thumb = mix.tracks[0]?.thumbnail || "";
-        const basedOn = (mix.based_on || []).join(", ");
-        html += `
-            <div class="mix-card" onclick="playMix('daily', ${i})">
-                <img src="${thumb}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('daily', ${i})">&#9654;</button>
-                <div class="mix-title">${esc(mix.name)}</div>
-                <div class="mix-subtitle">${esc(basedOn)}</div>
-            </div>`;
-    });
-    html += `</div></div>`;
-    return html;
+function sectionHeader(title, subtitle) {
+    return `<div class="home-section-header"><h3>${title}</h3>${subtitle ? `<span class="section-subtitle">${subtitle}</span>` : ""}</div>`;
 }
 
-function renderDiscoveryMix(mix) {
-    const thumb = mix.tracks[0]?.thumbnail || "";
-    return `<div class="home-section">
-        <div class="home-section-header">
-            <h3>&#127758; Discovery Mix</h3>
-            <span class="section-subtitle">New music tailored for you</span>
-        </div>
-        <div class="mix-grid">
+function songRowHTML(s, action) {
+    return `
+        <div class="song-row" onclick="${action}">
+            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <div class="info">
+                <div class="title">${esc(s.title || "Unknown")}</div>
+                <div class="subtitle">${esc(s.artist || "")}${s.album ? ' &middot; ' + esc(s.album) : ''}</div>
+            </div>
+            <div class="duration">${s.duration || ''}</div>
+            ${kebabBtn(s)}
+        </div>`;
+}
+
+function showMoreBtn(key, expanded, visible) {
+    if (!visible) return "";
+    return `<button class="show-more-btn" onclick="toggleSection('${key}')">${expanded ? "Show Less" : "Show More"}</button>`;
+}
+
+function toggleSection(key) {
+    if (homeFeedExpanded.has(key)) homeFeedExpanded.delete(key);
+    else homeFeedExpanded.add(key);
+    const el = document.getElementById("sec_" + key);
+    if (el) el.outerHTML = sectionHTML(key);
+}
+
+function sectionHTML(key) {
+    const expanded = homeFeedExpanded.has(key);
+    switch (key) {
+        case "recent": return renderRecentlyPlayedSection(expanded);
+        case "daily": return renderDailyMixesSection(expanded);
+        case "discovery": return renderDiscoveryMixSection(expanded);
+        case "because": return renderBecauseYouLikedSection(expanded);
+        case "albums": return renderAlbumSuggestionsSection(expanded);
+        case "artists": return renderNewArtistsSection(expanded);
+    }
+    return "";
+}
+
+function renderRecentlyPlayedSection(expanded) {
+    const tracks = homeFeedData.recent;
+    if (!tracks.length) return "";
+    const shown = expanded ? tracks : tracks.slice(0, RECENT_LIMIT);
+    queue = tracks;
+    queueSource = 'other';
+    return `<div class="home-section" id="sec_recent">
+        ${sectionHeader("&#128337; Recently Played", "Songs you have listened to")}
+        ${shown.map((s, i) => songRowHTML(s, `playSong(${i})`)).join("")}
+        ${showMoreBtn("recent", expanded, tracks.length > RECENT_LIMIT)}
+    </div>`;
+}
+
+function renderDailyMixesSection(expanded) {
+    const mixes = homeFeedData.mixes;
+    if (!mixes.length) return "";
+    let html = `<div class="home-section" id="sec_daily">${sectionHeader("&#127925; Daily Mixes", "")}`;
+    if (!expanded) {
+        html += `<div class="mix-grid">`;
+        mixes.forEach((mix, i) => {
+            const thumb = (mix.tracks && mix.tracks[0] && mix.tracks[0].thumbnail) || "";
+            const basedOn = (mix.based_on || []).join(", ");
+            html += `
+                <div class="mix-card" onclick="playMix('daily', ${i})">
+                    <img src="${thumb}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('daily', ${i})">&#9654;</button>
+                    <div class="mix-title">${esc(mix.name)}</div>
+                    <div class="mix-subtitle">${esc(basedOn)}</div>
+                </div>`;
+        });
+        html += `</div>`;
+        html += showMoreBtn("daily", false, true);
+    } else {
+        mixes.forEach((mix, i) => {
+            const basedOn = (mix.based_on || []).join(", ");
+            html += `<div class="mix-track-section-title">${esc(mix.name)}${basedOn ? ' &middot; ' + esc(basedOn) : ''}</div>`;
+            html += (mix.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('daily', ${i}, ${j})`)).join("");
+        });
+        html += showMoreBtn("daily", true, true);
+    }
+    return html + `</div>`;
+}
+
+function renderDiscoveryMixSection(expanded) {
+    const mix = homeFeedData.discovery;
+    if (!mix || !mix.tracks || !mix.tracks.length) return "";
+    const thumb = mix.tracks[0].thumbnail || "";
+    let html = `<div class="home-section" id="sec_discovery">
+        ${sectionHeader("&#127758; Discovery Mix", "New music tailored for you")}`;
+    if (!expanded) {
+        html += `<div class="mix-grid">
             <div class="mix-card" onclick="playMix('discovery', 0)">
                 <img src="${thumb}" alt="" loading="lazy" onerror="this.style.background='#333'">
                 <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('discovery', 0)">&#9654;</button>
                 <div class="mix-title">${esc(mix.name || "Discovery Mix")}</div>
-                <div class="mix-subtitle">${(mix.tracks || []).length} tracks</div>
+                <div class="mix-subtitle">${mix.tracks.length} tracks</div>
             </div>
-        </div>
-    </div>`;
+        </div>`;
+        html += showMoreBtn("discovery", false, true);
+    } else {
+        html += (mix.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('discovery', 0, ${j})`)).join("");
+        html += showMoreBtn("discovery", true, true);
+    }
+    return html + `</div>`;
 }
 
-function renderBecauseYouLiked(suggestions) {
-    let html = `<div class="home-section"><div class="home-section-header"><h3>&#10084;&#65039; Because You Liked</h3></div><div class="because-liked-grid">`;
-    suggestions.slice(0, 3).forEach((s, i) => {
-        const songs = (s.tracks || []).slice(0, 3).map(t => esc(t.title)).join("<br>");
-        html += `
-            <div class="because-liked-card" onclick="playBecauseLiked(${i})">
-                <div class="seed-info">Because you liked <strong>${esc(s.seed_title)}</strong></div>
-                <div class="seed-songs">${songs}</div>
-            </div>`;
-    });
-    html += `</div></div>`;
-    return html;
+function renderBecauseYouLikedSection(expanded) {
+    const suggestions = homeFeedData.because;
+    if (!suggestions.length) return "";
+    let html = `<div class="home-section" id="sec_because">${sectionHeader("&#10084;&#65039; Because You Liked", "")}`;
+    if (!expanded) {
+        html += `<div class="because-liked-grid">`;
+        suggestions.slice(0, 3).forEach((s, i) => {
+            const songs = (s.tracks || []).slice(0, 3).map(t => esc(t.title)).join("<br>");
+            html += `
+                <div class="because-liked-card" onclick="playBecauseLiked(${i})">
+                    <div class="seed-info">Because you liked <strong>${esc(s.seed_title)}</strong></div>
+                    <div class="seed-songs">${songs}</div>
+                </div>`;
+        });
+        html += `</div>`;
+        html += showMoreBtn("because", false, true);
+    } else {
+        suggestions.forEach((s, i) => {
+            html += `<div class="mix-track-section-title">Because you liked <strong>${esc(s.seed_title)}</strong></div>`;
+            html += (s.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('because', ${i}, ${j})`)).join("");
+        });
+        html += showMoreBtn("because", true, true);
+    }
+    return html + `</div>`;
 }
 
-function renderAlbumSuggestions(albums) {
-    let html = `<div class="home-section"><div class="home-section-header"><h3>&#128193; Albums For You</h3></div><div class="suggestion-grid">`;
-    albums.slice(0, 6).forEach(a => {
+function renderAlbumSuggestionsSection(expanded) {
+    const albums = homeFeedData.albums;
+    if (!albums.length) return "";
+    const shown = expanded ? albums : albums.slice(0, ALBUM_LIMIT);
+    let html = `<div class="home-section" id="sec_albums">${sectionHeader("&#128193; Albums For You", "")}<div class="suggestion-grid">`;
+    shown.forEach(a => {
         html += `
             <div class="suggestion-card" onclick="openAlbum('${a.album_id}')">
                 <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
@@ -1666,13 +1772,16 @@ function renderAlbumSuggestions(albums) {
                 <div class="card-subtitle">${esc(a.artist)}</div>
             </div>`;
     });
-    html += `</div></div>`;
+    html += `</div>${showMoreBtn("albums", expanded, albums.length > ALBUM_LIMIT)}</div>`;
     return html;
 }
 
-function renderNewArtists(artists) {
-    let html = `<div class="home-section"><div class="home-section-header"><h3>&#127908; New Artists</h3></div><div class="suggestion-grid">`;
-    artists.slice(0, 6).forEach(a => {
+function renderNewArtistsSection(expanded) {
+    const artists = homeFeedData.artists;
+    if (!artists.length) return "";
+    const shown = expanded ? artists : artists.slice(0, ARTIST_LIMIT);
+    let html = `<div class="home-section" id="sec_artists">${sectionHeader("&#127908; New Artists", "")}<div class="suggestion-grid">`;
+    shown.forEach(a => {
         html += `
             <div class="suggestion-card" onclick="openArtist('${a.artist_id}')">
                 <img src="${a.thumbnail || ''}" alt="" class="round" loading="lazy" onerror="this.style.background='#333'">
@@ -1680,8 +1789,27 @@ function renderNewArtists(artists) {
                 <div class="card-subtitle">From ${esc(a.based_on)}</div>
             </div>`;
     });
-    html += `</div></div>`;
+    html += `</div>${showMoreBtn("artists", expanded, artists.length > ARTIST_LIMIT)}</div>`;
     return html;
+}
+
+function playMixTrack(type, mixIndex, trackIndex) {
+    let tracks = null;
+    if (type === 'daily') {
+        const mix = homeFeedData.mixes[mixIndex];
+        if (mix) tracks = mix.tracks;
+    } else if (type === 'discovery') {
+        const mix = homeFeedData.discovery;
+        if (mix) tracks = mix.tracks;
+    } else if (type === 'because') {
+        const s = homeFeedData.because[mixIndex];
+        if (s) tracks = s.tracks;
+    }
+    if (!tracks || !tracks.length) return;
+    queue = tracks;
+    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : 'because-liked');
+    enqueueMixTracks(queue.slice(1));
+    playSong(trackIndex);
 }
 
 /* === Play Mix from Home === */

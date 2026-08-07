@@ -72,25 +72,30 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
     """Generate Daily Mix playlists using behavioral clusters.
 
     Composition per mix:
-        80% Familiar — top-scored songs from cluster's artists
+        80% Familiar — top-scored songs from user's artists
         10% Related — artists adjacent to cluster's top artists
          5% Emerging — new artists in affinity space
          5% Wildcard — high-scored songs outside primary cluster
+
+    If behavioral clusters don't yield enough playable mixes (new users, few
+    sessions), the remaining slots are padded with artist-based mixes so the
+    user always gets the full set of mixes.
     """
     clusters = cluster_sessions(user_id)
     scored_songs = get_scored_songs(user_id)
-    profile = get_taste_profile(user_id)
 
     if not clusters:
-        return _fallback_mix(user_id)
+        return _fallback_mixes(user_id, num_mixes)
 
     scored_by_artist = _index_songs_by_artist(scored_songs)
     recently_played_ids = {s["video_id"] for s in get_recently_played(user_id, limit=50)}
     mixes = []
+    used_artists: set = set()
 
     for i, cluster in enumerate(clusters[:num_mixes]):
         centroid = cluster.get("centroid", {})
         cluster_artists = centroid.get("top_artists", [])
+        used_artists.update(cluster_artists)
 
         familiar = _get_familiar_tracks(cluster_artists, scored_by_artist, recently_played_ids, limit=20)
         related = _get_related_tracks(user_id, cluster_artists, recently_played_ids, limit=3)
@@ -101,14 +106,19 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
 
         if tracks:
             mixes.append({
-                "name": f"Daily Mix {i + 1}",
+                "name": f"Daily Mix {len(mixes) + 1}",
                 "based_on": cluster_artists[:3],
                 "tracks": [_format_track(t) for t in tracks],
                 "engine_version": "v2.0",
             })
 
     if not mixes:
-        return _fallback_mix(user_id)
+        return _fallback_mixes(user_id, num_mixes)
+
+    if len(mixes) < num_mixes:
+        for mix in _fallback_mixes(user_id, num_mixes - len(mixes), exclude_artists=used_artists):
+            mix["name"] = f"Daily Mix {len(mixes) + 1}"
+            mixes.append(mix)
 
     return mixes
 
@@ -422,43 +432,71 @@ def _format_track(track: dict) -> dict:
     }
 
 
-def _fallback_mix(user_id: int) -> list[dict]:
-    """Fallback: use top artists when no clusters exist."""
-    top_artists = get_top_artists(user_id, limit=5)
-    if not top_artists:
-        return []
+def _fallback_mix(user_id: int, index: int = 1, exclude_artists: set | None = None) -> dict | None:
+    """Build one artist-based mix from the user's top artists.
 
+    `exclude_artists` is a mutable set: any artist used here is added to it so
+    consecutive fallback mixes don't repeat artists."""
+    top_artists = get_top_artists(user_id, limit=15)
+    excluded = set(exclude_artists or [])
     tracks = []
-    for artist in top_artists[:3]:
-        if artist.get("artist_id"):
-            try:
-                artist_data = get_artist(artist["artist_id"])
-                top_songs = artist_data.get("top_songs", [])[:8]
-                for s in top_songs:
-                    vid = s.get("id", s.get("videoId", ""))
-                    tracks.append({
-                        "id": vid,
-                        "title": s.get("title", ""),
-                        "artist": s.get("artist", artist["artist"]),
-                        "artist_id": s.get("artist_id", ""),
-                        "album": s.get("album", ""),
-                        "album_id": s.get("album_id", ""),
-                        "duration": s.get("duration", ""),
-                        "duration_seconds": s.get("duration_seconds", 0),
-                        "thumbnail": s.get("thumbnail", ""),
-                        "url": f"https://music.youtube.com/watch?v={vid}",
-                    })
-            except Exception:
-                pass
+    based_on = []
+    artists_used = set()
+
+    for artist in top_artists:
+        aid = artist.get("artist_id")
+        if not aid or aid in excluded or aid in artists_used:
+            continue
+        artists_used.add(aid)
+        based_on.append(artist["artist"])
+        try:
+            artist_data = get_artist(aid)
+            top_songs = artist_data.get("top_songs", [])[:8]
+        except Exception:
+            top_songs = []
+        for s in top_songs:
+            vid = s.get("id", s.get("videoId", ""))
+            if not vid:
+                continue
+            tracks.append({
+                "id": vid,
+                "title": s.get("title", ""),
+                "artist": s.get("artist", artist["artist"]),
+                "artist_id": s.get("artist_id", ""),
+                "album": s.get("album", ""),
+                "album_id": s.get("album_id", ""),
+                "duration": s.get("duration", ""),
+                "duration_seconds": s.get("duration_seconds", 0),
+                "thumbnail": s.get("thumbnail", ""),
+                "url": f"https://music.youtube.com/watch?v={vid}",
+            })
         if len(tracks) >= MIX_SIZE:
             break
 
-    if tracks:
-        tracks = tracks[:MIX_SIZE]
-        return [{
-            "name": "Daily Mix 1",
-            "based_on": [a["artist"] for a in top_artists[:3]],
-            "tracks": tracks,
-            "engine_version": "v2.0",
-        }]
-    return []
+    if not tracks:
+        return None
+
+    if exclude_artists is not None:
+        exclude_artists.update(artists_used)
+
+    return {
+        "name": f"Daily Mix {index}",
+        "based_on": based_on[:3],
+        "tracks": tracks[:MIX_SIZE],
+        "engine_version": "v2.0",
+    }
+
+
+def _fallback_mixes(user_id: int, count: int = DAILY_MIX_COUNT,
+                    exclude_artists: set | None = None) -> list[dict]:
+    """Generate up to `count` artist-based fallback mixes.
+
+    Each mix is built from top artists not already covered by previous mixes."""
+    used = set(exclude_artists or [])
+    mixes = []
+    for i in range(count):
+        mix = _fallback_mix(user_id, index=i + 1, exclude_artists=used)
+        if not mix:
+            break
+        mixes.append(mix)
+    return mixes

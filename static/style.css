@@ -1827,3 +1827,29 @@ header h1 {
         font-size: 1.3rem;
     }
 }
+
+/* === Home Section Show More / Expand === */
+.show-more-btn {
+    display: block;
+    margin: 14px auto 0;
+    background: transparent;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    padding: 8px 22px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.show-more-btn:hover {
+    background: #1a1a1a;
+    border-color: #555;
+}
+
+.mix-track-section-title {
+    margin: 18px 0 8px;
+    color: #bbb;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
