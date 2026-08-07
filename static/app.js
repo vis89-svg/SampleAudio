@@ -17,6 +17,16 @@ let userQueue = [];
 let searchCache = {};
 let recommendations = [];
 let upNextOpen = false;
+let mainContext = "home";
+let playHistory = [];
+let historyNavigating = false;
+
+function pushToHistory(song) {
+    if (!song || !song.id) return;
+    if (playHistory.length && playHistory[playHistory.length - 1].id === song.id) return;
+    playHistory.push(song);
+    if (playHistory.length > 50) playHistory.shift();
+}
 
 /* === Auth State === */
 const TOKEN_KEY = "sampleaudio_token";
@@ -465,6 +475,10 @@ function switchTab(tab) {
 
 async function openArtist(browseId) {
     showLoading();
+    const homeViewEl = document.getElementById("homeView");
+    const searchViewEl = document.getElementById("searchView");
+    if (homeViewEl) homeViewEl.classList.add("hidden");
+    if (searchViewEl) searchViewEl.classList.remove("hidden");
     tabsDiv.classList.add("hidden");
     resultsDiv.classList.add("hidden");
     albumView.classList.add("hidden");
@@ -517,6 +531,10 @@ async function openArtist(browseId) {
 
 async function openAlbum(browseId) {
     showLoading();
+    const homeViewEl = document.getElementById("homeView");
+    const searchViewEl = document.getElementById("searchView");
+    if (homeViewEl) homeViewEl.classList.add("hidden");
+    if (searchViewEl) searchViewEl.classList.remove("hidden");
     tabsDiv.classList.add("hidden");
     resultsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
@@ -559,8 +577,12 @@ async function openAlbum(browseId) {
 function backToResults() {
     artistView.classList.add("hidden");
     albumView.classList.add("hidden");
-    resultsDiv.classList.remove("hidden");
-    tabsDiv.classList.remove("hidden");
+    if (mainContext === "home") {
+        showHome();
+    } else {
+        resultsDiv.classList.remove("hidden");
+        tabsDiv.classList.remove("hidden");
+    }
 }
 
 function streamUrl(song, quality, clean) {
@@ -579,6 +601,7 @@ function playSong(index) {
         console.log('[DEBUG] playSong: index out of range');
         return;
     }
+    if (currentSong && currentSong.id !== queue[index].id && !historyNavigating) pushToHistory(currentSong);
     audioErrorRetried = false;
     queueIndex = index;
     const song = queue[index];
@@ -685,6 +708,7 @@ function closeSongMenu() {
 }
 
 function playSongDirect(song) {
+    if (currentSong && currentSong.id !== song.id && !historyNavigating) pushToHistory(currentSong);
     audioErrorRetried = false;
     currentSong = song;
     if (userQueue.length > 0) {
@@ -879,6 +903,15 @@ function togglePlay() {
 }
 
 function prevTrack() {
+    if (playHistory.length > 0) {
+        const prev = playHistory.pop();
+        historyNavigating = true;
+        const qIdx = queue.findIndex(s => s.id === prev.id);
+        if (qIdx >= 0) queueIndex = qIdx;
+        playSongDirect(prev);
+        historyNavigating = false;
+        return;
+    }
     if (queueIndex > 0) playSong(queueIndex - 1);
 }
 
@@ -990,6 +1023,7 @@ function renderUpNext() {
 
 function playRecommendation(index) {
     if (index < 0 || index >= recommendations.length) return;
+    if (currentSong && currentSong.id !== recommendations[index].id && !historyNavigating) pushToHistory(currentSong);
     audioErrorRetried = false;
     const song = recommendations[index];
     const quality = document.getElementById("qualitySelect").value;
@@ -1355,6 +1389,7 @@ document.addEventListener("keydown", (e) => {
 
 /* === Navigation === */
 function showHome() {
+    mainContext = "home";
     document.getElementById("homeView").classList.remove("hidden");
     document.getElementById("searchView").classList.add("hidden");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
@@ -1363,6 +1398,7 @@ function showHome() {
 }
 
 function showSearch() {
+    mainContext = "search";
     document.getElementById("homeView").classList.add("hidden");
     document.getElementById("searchView").classList.remove("hidden");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
@@ -1537,6 +1573,7 @@ function renderNewArtists(artists) {
 
 /* === Play Mix from Home === */
 function enqueueMixTracks(tracks) {
+    userQueue.length = 0;
     for (const t of tracks) {
         if (userQueue.length >= 50) break;
         userQueue.push(t);

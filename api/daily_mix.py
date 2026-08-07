@@ -153,12 +153,17 @@ def generate_because_you_liked(user_id: int) -> list[dict]:
 
     seeds = liked[:3]
     results = []
+    used_ids = set()
 
     for seed in seeds:
         try:
-            recs = get_recommendations(seed["video_id"], limit=10)
+            recs = get_recommendations(seed["video_id"], limit=20)
             tracks = []
             for t in recs:
+                tid = t.get("id", "")
+                if tid in used_ids:
+                    continue
+                used_ids.add(tid)
                 tracks.append({
                     "id": t.get("id", ""),
                     "title": t.get("title", ""),
@@ -171,6 +176,8 @@ def generate_because_you_liked(user_id: int) -> list[dict]:
                     "thumbnail": t.get("thumbnail", ""),
                     "url": t.get("url", ""),
                 })
+                if len(tracks) >= 10:
+                    break
             if tracks:
                 results.append({
                     "seed_title": seed.get("title", ""),
