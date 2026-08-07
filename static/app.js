@@ -602,6 +602,9 @@ function playSong(index) {
         return;
     }
     if (currentSong && currentSong.id !== queue[index].id && !historyNavigating) pushToHistory(currentSong);
+    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked') {
+        clearStaleQueueItems();
+    }
     audioErrorRetried = false;
     queueIndex = index;
     const song = queue[index];
@@ -1576,10 +1579,17 @@ function enqueueMixTracks(tracks) {
     userQueue.length = 0;
     for (const t of tracks) {
         if (userQueue.length >= 50) break;
+        t._autoQueued = true;
         userQueue.push(t);
     }
     if (!upNextOpen) toggleUpNext();
     renderUpNext();
+}
+
+function clearStaleQueueItems() {
+    if (!userQueue.some(s => s._autoQueued)) return;
+    userQueue = userQueue.filter(s => !s._autoQueued);
+    if (upNextOpen) renderUpNext();
 }
 
 async function playMix(type, index) {
