@@ -76,7 +76,18 @@ async function authFetch(url, options = {}) {
     if (authToken) {
         headers["Authorization"] = "Bearer " + authToken;
     }
-    return fetch(url, { ...options, headers });
+    const resp = await fetch(url, { ...options, headers });
+    if (resp.status === 401 && authToken && !options.silent401) {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+        currentUser = null;
+        authToken = null;
+        updateAuthUI();
+        const dropdown = document.getElementById("userDropdown");
+        if (dropdown) dropdown.classList.add("hidden");
+        showCleanNoInfo("Session expired - please login again");
+    }
+    return resp;
 }
 
 function showProfilePage() {
@@ -723,6 +734,7 @@ function logPlay(song) {
     if (!authToken || !song || !song.id) return;
     authFetch("/api/user/history", {
         method: "POST",
+        silent401: true,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             video_id: song.id,
@@ -783,8 +795,12 @@ function toggleLike() {
                 showCleanNoInfo("Added to likes");
             }
             updateLikeButton();
+        } else if (r.status !== 401) {
+            showCleanNoInfo("Failed to update like. Please try again.");
         }
-    }).catch(() => {});
+    }).catch(() => {
+        showCleanNoInfo("Failed to update like. Please try again.");
+    });
 }
 
 function updateLikeButton() {
@@ -1372,9 +1388,9 @@ async function loadHomeFeed() {
         const [dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
             authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
             authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
-            authFetch("/api/user/mixes/because-you-liked").then(r => r.json()),
-            authFetch("/api/user/mixes/albums").then(r => r.json()),
-            authFetch("/api/user/mixes/new-artists").then(r => r.json()),
+            authFetch("/api/user/mixes/because-you-liked").then(r => r.ok ? r.json() : {suggestions: []}),
+            authFetch("/api/user/mixes/albums").then(r => r.ok ? r.json() : {albums: []}),
+            authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
         ]);
 
         let html = "";

@@ -48,7 +48,30 @@ PORT = 8000
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "sampleaudio.db")
 
 # === JWT Auth ===
-JWT_SECRET = os.getenv("JWT_SECRET", "change-me-in-production-" + os.urandom(16).hex())
+def _load_jwt_secret():
+    """Load a stable JWT secret from env or a persisted file so tokens
+    survive server restarts. Never raises: falls back to a random secret
+    (sessions reset on restart) if the file cannot be read or written."""
+    secret = os.getenv("JWT_SECRET", "").strip()
+    if secret:
+        return secret
+    secret_file = os.path.join(os.path.dirname(__file__), ".jwt_secret")
+    try:
+        if os.path.exists(secret_file):
+            with open(secret_file, "r", encoding="utf-8") as f:
+                secret = f.read().strip()
+            if secret:
+                return secret
+        import secrets
+        secret = secrets.token_hex(32)
+        with open(secret_file, "w", encoding="utf-8") as f:
+            f.write(secret)
+        return secret
+    except OSError:
+        import secrets
+        return secrets.token_hex(32)
+
+JWT_SECRET = _load_jwt_secret()
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = 24
 
