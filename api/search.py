@@ -10,6 +10,10 @@ _yt: Optional[YTMusic] = None
 _song_details_cache: dict[str, dict] = {}
 _song_details_lock = threading.Lock()
 
+_recommendations_cache: dict[str, tuple[float, list[dict]]] = {}
+_recommendations_lock = threading.Lock()
+RECOMMENDATIONS_CACHE_TTL = 3600  # seconds
+
 
 def _get_ytmusic() -> YTMusic:
     global _yt
@@ -228,7 +232,18 @@ def get_song_details(video_id: str) -> dict:
 
 
 def get_recommendations(video_id: str, limit: int = 25) -> list[dict]:
-    """Get YouTube Music autoplay/recommended tracks for a given videoId."""
+    """Get YouTube Music autoplay/recommended tracks for a given videoId.
+
+    Cached for an hour: the home feed requests recommendations for every liked
+    seed (up to 6 x 50 tracks) on every load, and each hit is a slow
+    ytmusicapi watch-playlist call.
+    """
+    cache_key = f"{video_id}:{limit}"
+    with _recommendations_lock:
+        cached = _recommendations_cache.get(cache_key)
+        if cached and (time.time() - cached[0]) < RECOMMENDATIONS_CACHE_TTL:
+            return cached[1]
+
     try:
         watch = _get_ytmusic().get_watch_playlist(videoId=video_id, limit=limit)
     except Exception:
@@ -251,6 +266,9 @@ def get_recommendations(video_id: str, limit: int = 25) -> list[dict]:
             "url": f"https://music.youtube.com/watch?v={t.get('videoId', '')}",
             "isExplicit": t.get("isExplicit", False),
         })
+
+    with _recommendations_lock:
+        _recommendations_cache[cache_key] = (time.time(), tracks)
     return tracks
 
 

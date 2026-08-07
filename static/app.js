@@ -1739,11 +1739,12 @@ function renderBecauseYouLikedSection(expanded) {
     let html = `<div class="home-section" id="sec_because">${sectionHeader("&#10084;&#65039; Because You Liked", "")}`;
     if (!expanded) {
         html += `<div class="because-liked-grid">`;
-        suggestions.slice(0, 3).forEach((s, i) => {
-            const songs = (s.tracks || []).slice(0, 3).map(t => esc(t.title)).join("<br>");
+        suggestions.slice(0, 6).forEach((s, i) => {
+            const songs = (s.tracks || []).slice(0, 5).map(t => esc(t.title)).join("<br>");
+            const trackCount = (s.tracks || []).length;
             html += `
                 <div class="because-liked-card" onclick="playBecauseLiked(${i})">
-                    <div class="seed-info">Because you liked <strong>${esc(s.seed_title)}</strong></div>
+                    <div class="seed-info">Because you liked <strong>${esc(s.seed_title)}</strong>${trackCount ? ` &middot; ${trackCount} songs` : ""}</div>
                     <div class="seed-songs">${songs}</div>
                 </div>`;
         });
@@ -1751,7 +1752,8 @@ function renderBecauseYouLikedSection(expanded) {
         html += showMoreBtn("because", false, true);
     } else {
         suggestions.forEach((s, i) => {
-            html += `<div class="mix-track-section-title">Because you liked <strong>${esc(s.seed_title)}</strong></div>`;
+            const trackCount = (s.tracks || []).length;
+            html += `<div class="mix-track-section-title">Because you liked <strong>${esc(s.seed_title)}</strong>${trackCount ? ` &middot; ${trackCount} songs` : ""}</div>`;
             html += (s.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('because', ${i}, ${j})`)).join("");
         });
         html += showMoreBtn("because", true, true);

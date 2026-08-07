@@ -156,18 +156,21 @@ def generate_discovery_mix(user_id: int) -> dict:
 
 
 def generate_because_you_liked(user_id: int) -> list[dict]:
-    """Generate 'Because You Liked' suggestions."""
+    """Generate 'Because You Liked' suggestions.
+
+    One card per liked song (up to 6), each filled with up to 50 recommended
+    tracks so cards stay rich even for users with few likes."""
     liked = get_liked_songs(user_id)
     if not liked:
         return []
 
-    seeds = liked[:3]
+    seeds = liked[:6]
     results = []
     used_ids = set()
 
     for seed in seeds:
         try:
-            recs = get_recommendations(seed["video_id"], limit=20)
+            recs = get_recommendations(seed["video_id"], limit=50)
             tracks = []
             for t in recs:
                 tid = t.get("id", "")
@@ -186,7 +189,7 @@ def generate_because_you_liked(user_id: int) -> list[dict]:
                     "thumbnail": t.get("thumbnail", ""),
                     "url": t.get("url", ""),
                 })
-                if len(tracks) >= 10:
+                if len(tracks) >= 50:
                     break
             if tracks:
                 results.append({
