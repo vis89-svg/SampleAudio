@@ -687,6 +687,13 @@ function closeSongMenu() {
 function playSongDirect(song) {
     audioErrorRetried = false;
     currentSong = song;
+    if (userQueue.length > 0) {
+        const qIdx = userQueue.findIndex(s => s.id === song.id);
+        if (qIdx >= 0) {
+            userQueue.splice(qIdx, 1);
+            renderUpNext();
+        }
+    }
     const quality = document.getElementById("qualitySelect").value;
     const clean = document.getElementById("cleanToggle").checked;
 
@@ -795,6 +802,7 @@ function toggleLike() {
                 showCleanNoInfo("Added to likes");
             }
             updateLikeButton();
+            refreshHomeFeedQuiet();
         } else if (r.status !== 401) {
             showCleanNoInfo("Failed to update like. Please try again.");
         }
@@ -1385,48 +1393,69 @@ async function loadHomeFeed() {
     }
 
     try {
-        const [dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
-            authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
-            authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
-            authFetch("/api/user/mixes/because-you-liked").then(r => r.ok ? r.json() : {suggestions: []}),
-            authFetch("/api/user/mixes/albums").then(r => r.ok ? r.json() : {albums: []}),
-            authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
-        ]);
-
-        let html = "";
-
-        if (dailyMixes.mixes && dailyMixes.mixes.length) {
-            html += renderDailyMixes(dailyMixes.mixes);
-        }
-
-        if (discovery.mix && discovery.mix.tracks && discovery.mix.tracks.length) {
-            html += renderDiscoveryMix(discovery.mix);
-        }
-
-        if (becauseLiked.suggestions && becauseLiked.suggestions.length) {
-            html += renderBecauseYouLiked(becauseLiked.suggestions);
-        }
-
-        if (albums.albums && albums.albums.length) {
-            html += renderAlbumSuggestions(albums.albums);
-        }
-
-        if (artists.artists && artists.artists.length) {
-            html += renderNewArtists(artists.artists);
-        }
-
-        if (!html) {
-            html = `<div class="profile-empty">
-                <h3>Start Listening!</h3>
-                <p>Play some songs to get personalized Daily Mixes, artist recommendations, and album suggestions.</p>
-                <button class="mix-play-btn" style="position:static;opacity:1;transform:none" onclick="showSearch()">&#128269; Search Songs</button>
-            </div>`;
-        }
-
-        container.innerHTML = html;
+        container.innerHTML = await fetchHomeFeed();
     } catch (err) {
         container.innerHTML = `<div class="empty-state">Failed to load feed. Please try again.</div>`;
     }
+}
+
+async function fetchHomeFeed() {
+    const [dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
+        authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
+        authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
+        authFetch("/api/user/mixes/because-you-liked").then(r => r.ok ? r.json() : {suggestions: []}),
+        authFetch("/api/user/mixes/albums").then(r => r.ok ? r.json() : {albums: []}),
+        authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
+    ]);
+
+    let html = "";
+
+    if (dailyMixes.mixes && dailyMixes.mixes.length) {
+        html += renderDailyMixes(dailyMixes.mixes);
+    }
+
+    if (discovery.mix && discovery.mix.tracks && discovery.mix.tracks.length) {
+        html += renderDiscoveryMix(discovery.mix);
+    }
+
+    if (becauseLiked.suggestions && becauseLiked.suggestions.length) {
+        html += renderBecauseYouLiked(becauseLiked.suggestions);
+    }
+
+    if (albums.albums && albums.albums.length) {
+        html += renderAlbumSuggestions(albums.albums);
+    }
+
+    if (artists.artists && artists.artists.length) {
+        html += renderNewArtists(artists.artists);
+    }
+
+    if (!html) {
+        html = `<div class="profile-empty">
+            <h3>Start Listening!</h3>
+            <p>Play some songs to get personalized Daily Mixes, artist recommendations, and album suggestions.</p>
+            <button class="mix-play-btn" style="position:static;opacity:1;transform:none" onclick="showSearch()">&#128269; Search Songs</button>
+        </div>`;
+    }
+
+    return html;
+}
+
+let homeRefreshTimer = null;
+
+function refreshHomeFeedQuiet() {
+    if (homeRefreshTimer) return;
+    homeRefreshTimer = setTimeout(async () => {
+        homeRefreshTimer = null;
+        const container = document.getElementById("homeContent");
+        const homeView = document.getElementById("homeView");
+        if (!container || !homeView || homeView.classList.contains("hidden")) return;
+        try {
+            container.innerHTML = await fetchHomeFeed();
+        } catch (err) {
+            // keep the existing feed on failure
+        }
+    }, 1500);
 }
 
 function renderDailyMixes(mixes) {
@@ -1507,23 +1536,27 @@ function renderNewArtists(artists) {
 }
 
 /* === Play Mix from Home === */
+function enqueueMixTracks(tracks) {
+    for (const t of tracks) {
+        if (userQueue.length >= 50) break;
+        userQueue.push(t);
+    }
+    if (!upNextOpen) toggleUpNext();
+    renderUpNext();
+}
+
 async function playMix(type, index) {
-    console.log('[DEBUG] playMix called, type:', type, 'index:', index);
     let data;
     if (type === "daily") {
         const resp = await authFetch("/api/user/daily-mix");
         data = await resp.json();
-        console.log('[DEBUG] playMix daily data keys:', Object.keys(data));
         if (data.mixes && data.mixes[index]) {
             queue = data.mixes[index].tracks;
             queueSource = 'daily-mix';
-            console.log('[DEBUG] playMix queue set, length:', queue.length);
             if (queue.length > 0) {
-                console.log('[DEBUG] playMix first track:', JSON.stringify(queue[0]));
+                enqueueMixTracks(queue.slice(1));
+                playSong(0);
             }
-            playSong(0);
-        } else {
-            console.log('[DEBUG] playMix: no mixes found, data:', data);
         }
     } else if (type === "discovery") {
         const resp = await authFetch("/api/user/mixes/discovery");
@@ -1531,7 +1564,10 @@ async function playMix(type, index) {
         if (data.mix && data.mix.tracks) {
             queue = data.mix.tracks;
             queueSource = 'discovery';
-            playSong(0);
+            if (queue.length > 0) {
+                enqueueMixTracks(queue.slice(1));
+                playSong(0);
+            }
         }
     }
 }
@@ -1542,7 +1578,10 @@ async function playBecauseLiked(index) {
     if (data.suggestions && data.suggestions[index]) {
         queue = data.suggestions[index].tracks;
         queueSource = 'because-liked';
-        playSong(0);
+        if (queue.length > 0) {
+            enqueueMixTracks(queue.slice(1));
+            playSong(0);
+        }
     }
 }
 

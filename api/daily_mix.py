@@ -194,7 +194,7 @@ def generate_album_suggestions(user_id: int) -> list[dict]:
                FROM listening_history
                WHERE user_id = ? AND album IS NOT NULL AND album_id IS NOT NULL
                GROUP BY album_id
-               HAVING play_count >= 2
+               HAVING play_count >= 1
                ORDER BY play_count DESC
                LIMIT 10""",
             (user_id,),
@@ -244,17 +244,23 @@ def generate_new_artist_suggestions(user_id: int) -> list[dict]:
             continue
         try:
             artist_data = get_artist(artist["artist_id"])
-            related = artist_data.get("related", {}).get("browseId", [])
-            for rel_id in related[:5]:
-                if rel_id not in followed and rel_id not in seen_ids:
-                    seen_ids.add(rel_id)
-                    rel_data = get_artist(rel_id)
-                    suggestions.append({
-                        "artist_id": rel_id,
-                        "artist_name": rel_data.get("name", ""),
-                        "thumbnail": rel_data.get("thumbnail", ""),
-                        "based_on": artist["artist"],
-                    })
+            related = artist_data.get("related", {}) or {}
+            results = related.get("results", []) if isinstance(related, dict) else []
+            for rel in results[:5]:
+                if not isinstance(rel, dict):
+                    continue
+                rel_id = rel.get("browseId", "")
+                if not rel_id or rel_id in followed or rel_id in seen_ids:
+                    continue
+                seen_ids.add(rel_id)
+                suggestions.append({
+                    "artist_id": rel_id,
+                    "artist_name": rel.get("title", ""),
+                    "thumbnail": (rel.get("thumbnails") or [{}])[0].get("url", ""),
+                    "based_on": artist["artist"],
+                })
+                if len(suggestions) >= 10:
+                    return suggestions
         except Exception as e:
             logger.warning(f"Related artist fetch failed for {artist['artist_id']}: {e}")
 

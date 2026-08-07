@@ -1497,12 +1497,33 @@ header h1 {
 
 .home-greeting {
     margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .home-greeting h2 {
     font-size: 1.6rem;
     font-weight: 700;
     color: #fff;
+}
+
+.home-refresh-btn {
+    background: transparent;
+    border: 1px solid #444;
+    color: #aaa;
+    border-radius: 18px;
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.home-refresh-btn:hover {
+    border-color: #1db954;
+    color: #1db954;
 }
 
 .home-content {

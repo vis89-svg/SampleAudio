@@ -136,6 +136,7 @@ def get_artist(browse_id: str) -> dict:
         "albums_params": artist.get("albums", {}).get("params", ""),
         "total_songs": artist.get("songs", {}).get("total", len(top_songs)),
         "total_albums": artist.get("albums", {}).get("total", len(albums)),
+        "related": artist.get("related", []) or [],
     }
 
 
