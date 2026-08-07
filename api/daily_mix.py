@@ -276,10 +276,17 @@ def generate_new_artist_suggestions(user_id: int) -> list[dict]:
                 if not rel_id or rel_id in followed or rel_id in seen_ids:
                     continue
                 seen_ids.add(rel_id)
+                thumbnails = rel.get("thumbnails") or []
+                best_thumb = ""
+                for tn in thumbnails:
+                    size = (tn.get("width") or 0) * (tn.get("height") or 0)
+                    if size > 0 and tn.get("url"):
+                        if not best_thumb or size >= best_thumb[1]:
+                            best_thumb = (tn.get("url", ""), size)
                 suggestions.append({
                     "artist_id": rel_id,
                     "artist_name": rel.get("title", ""),
-                    "thumbnail": (rel.get("thumbnails") or [{}])[0].get("url", ""),
+                    "thumbnail": best_thumb[0] if best_thumb else "",
                     "based_on": artist["artist"],
                 })
                 if len(suggestions) >= 10:

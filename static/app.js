@@ -108,7 +108,6 @@ let songCompleted = false;
 let songStartTime = 0;
 let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [] };
 let homeFeedExpanded = new Set();
-const RECENT_LIMIT = 10;
 const ALBUM_LIMIT = 6;
 const ARTIST_LIMIT = 6;
 
@@ -1625,8 +1624,26 @@ function refreshHomeFeedQuiet() {
     }, 1500);
 }
 
-function sectionHeader(title, subtitle) {
-    return `<div class="home-section-header"><h3>${title}</h3>${subtitle ? `<span class="section-subtitle">${subtitle}</span>` : ""}</div>`;
+const BADGE_COLORS = ["#ffd700", "#00e5ff", "#ff4d6d", "#7cff6b", "#ffa726", "#c792ea", "#4dd0e1", "#ff8a80"];
+
+function hiRes(url) {
+    if (!url) return "";
+    return url
+        .replace(/=w\d+-h\d+/, "=w544-h544")
+        .replace(/hqdefault\.jpg/, "maxresdefault.jpg")
+        .replace(/mqdefault\.jpg/, "maxresdefault.jpg");
+}
+
+function numBadge(n, pos) {
+    const c = BADGE_COLORS[(n - 1) % BADGE_COLORS.length];
+    return `<span class="num-badge num-badge-${pos}" style="color:${c};border-color:${c}">#${n}</span>`;
+}
+
+function sectionHeader(title, subtitle, key, expanded) {
+    const chev = key
+        ? `<button class="section-chevron" onclick="toggleSection('${key}')" title="${expanded ? "Show Less" : "Show More"}">${expanded ? "&#10094;" : "&#10095;"}</button>`
+        : "";
+    return `<div class="home-section-header"><h3>${title}</h3>${subtitle ? `<span class="section-subtitle">${subtitle}</span>` : ""}${chev}</div>`;
 }
 
 function songRowHTML(s, action) {
@@ -1640,11 +1657,6 @@ function songRowHTML(s, action) {
             <div class="duration">${s.duration || ''}</div>
             ${kebabBtn(s)}
         </div>`;
-}
-
-function showMoreBtn(key, expanded, visible) {
-    if (!visible) return "";
-    return `<button class="show-more-btn" onclick="toggleSection('${key}')">${expanded ? "Show Less" : "Show More"}</button>`;
 }
 
 function toggleSection(key) {
@@ -1670,24 +1682,32 @@ function sectionHTML(key) {
 function renderRecentlyPlayedSection(expanded) {
     const tracks = homeFeedData.recent;
     if (!tracks.length) return "";
-    const shown = expanded ? tracks : tracks.slice(0, RECENT_LIMIT);
+    const shown = expanded ? tracks : tracks.slice(0, 6);
     queue = tracks;
     queueSource = 'other';
-    return `<div class="home-section" id="sec_recent">
-        ${sectionHeader("&#128337; Recently Played", "Songs you have listened to")}
-        ${shown.map((s, i) => songRowHTML(s, `playSong(${i})`)).join("")}
-        ${showMoreBtn("recent", expanded, tracks.length > RECENT_LIMIT)}
-    </div>`;
+    let html = `<div class="home-section" id="sec_recent">
+        ${sectionHeader("&#128337; Recently Played", "Songs you have listened to", "recent", expanded)}
+        <div class="suggestion-grid">`;
+    shown.forEach((t, i) => {
+        html += `
+            <div class="suggestion-card" onclick="playSong(${i})">
+                <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="card-title">${esc(t.title || "Unknown")}</div>
+                <div class="card-subtitle">${esc(t.artist || "")}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
 }
 
 function renderDailyMixesSection(expanded) {
     const mixes = homeFeedData.mixes;
     if (!mixes.length) return "";
-    let html = `<div class="home-section" id="sec_daily">${sectionHeader("&#127925; Daily Mixes", "")}`;
+    let html = `<div class="home-section" id="sec_daily">${sectionHeader("&#127925; Daily Mixes", "", "daily", expanded)}`;
     if (!expanded) {
         html += `<div class="mix-grid">`;
         mixes.forEach((mix, i) => {
-            const thumb = (mix.tracks && mix.tracks[0] && mix.tracks[0].thumbnail) || "";
+            const thumb = hiRes((mix.tracks && mix.tracks[0] && mix.tracks[0].thumbnail) || "");
             const basedOn = (mix.based_on || []).join(", ");
             html += `
                 <div class="mix-card" onclick="playMix('daily', ${i})">
@@ -1698,14 +1718,12 @@ function renderDailyMixesSection(expanded) {
                 </div>`;
         });
         html += `</div>`;
-        html += showMoreBtn("daily", false, true);
     } else {
         mixes.forEach((mix, i) => {
             const basedOn = (mix.based_on || []).join(", ");
             html += `<div class="mix-track-section-title">${esc(mix.name)}${basedOn ? ' &middot; ' + esc(basedOn) : ''}</div>`;
             html += (mix.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('daily', ${i}, ${j})`)).join("");
         });
-        html += showMoreBtn("daily", true, true);
     }
     return html + `</div>`;
 }
@@ -1713,9 +1731,9 @@ function renderDailyMixesSection(expanded) {
 function renderDiscoveryMixSection(expanded) {
     const mix = homeFeedData.discovery;
     if (!mix || !mix.tracks || !mix.tracks.length) return "";
-    const thumb = mix.tracks[0].thumbnail || "";
+    const thumb = hiRes(mix.tracks[0].thumbnail || "");
     let html = `<div class="home-section" id="sec_discovery">
-        ${sectionHeader("&#127758; Discovery Mix", "New music tailored for you")}`;
+        ${sectionHeader("&#127758; Discovery Mix", "New music tailored for you", "discovery", expanded)}`;
     if (!expanded) {
         html += `<div class="mix-grid">
             <div class="mix-card" onclick="playMix('discovery', 0)">
@@ -1725,38 +1743,46 @@ function renderDiscoveryMixSection(expanded) {
                 <div class="mix-subtitle">${mix.tracks.length} tracks</div>
             </div>
         </div>`;
-        html += showMoreBtn("discovery", false, true);
     } else {
         html += (mix.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('discovery', 0, ${j})`)).join("");
-        html += showMoreBtn("discovery", true, true);
     }
     return html + `</div>`;
+}
+
+function becauseTileHTML(t, cardIndex, trackIndex) {
+    return `
+        <div class="seed-tile" onclick="event.stopPropagation(); playMixTrack('because', ${cardIndex}, ${trackIndex})">
+            <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            ${numBadge(trackIndex + 1, "bl")}
+        </div>`;
 }
 
 function renderBecauseYouLikedSection(expanded) {
     const suggestions = homeFeedData.because;
     if (!suggestions.length) return "";
-    let html = `<div class="home-section" id="sec_because">${sectionHeader("&#10084;&#65039; Because You Liked", "")}`;
+    let html = `<div class="home-section" id="sec_because">${sectionHeader("&#10084;&#65039; Because You Liked", "", "because", expanded)}`;
     if (!expanded) {
-        html += `<div class="because-liked-grid">`;
+        html += `<div class="mix-grid">`;
         suggestions.slice(0, 6).forEach((s, i) => {
-            const songs = (s.tracks || []).slice(0, 5).map(t => esc(t.title)).join("<br>");
-            const trackCount = (s.tracks || []).length;
+            const first = (s.tracks || [])[0] || {};
+            const cover = hiRes(first.thumbnail || "");
             html += `
-                <div class="because-liked-card" onclick="playBecauseLiked(${i})">
-                    <div class="seed-info">Because you liked <strong>${esc(s.seed_title)}</strong>${trackCount ? ` &middot; ${trackCount} songs` : ""}</div>
-                    <div class="seed-songs">${songs}</div>
+                <div class="mix-card" onclick="playBecauseLiked(${i})">
+                    <div class="thumb-wrap">
+                        <img src="${cover}" alt="" class="square" loading="lazy" onerror="this.style.background='#333'">
+                        ${numBadge(1, "bl")}
+                    </div>
+                    <button class="mix-play-btn" onclick="event.stopPropagation(); playBecauseLiked(${i})">&#9654;</button>
+                    <div class="mix-title">${esc(s.seed_title || "Because You Liked")}</div>
+                    <div class="mix-subtitle">${(s.tracks || []).length} songs</div>
                 </div>`;
         });
         html += `</div>`;
-        html += showMoreBtn("because", false, true);
     } else {
         suggestions.forEach((s, i) => {
-            const trackCount = (s.tracks || []).length;
-            html += `<div class="mix-track-section-title">Because you liked <strong>${esc(s.seed_title)}</strong>${trackCount ? ` &middot; ${trackCount} songs` : ""}</div>`;
-            html += (s.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('because', ${i}, ${j})`)).join("");
+            html += `<div class="mix-track-section-title">${esc(s.seed_title)} &middot; ${(s.tracks || []).length} songs</div>`;
+            html += `<div class="seed-thumbs">${(s.tracks || []).map((t, j) => becauseTileHTML(t, i, j)).join("")}</div>`;
         });
-        html += showMoreBtn("because", true, true);
     }
     return html + `</div>`;
 }
@@ -1765,7 +1791,7 @@ function renderAlbumSuggestionsSection(expanded) {
     const albums = homeFeedData.albums;
     if (!albums.length) return "";
     const shown = expanded ? albums : albums.slice(0, ALBUM_LIMIT);
-    let html = `<div class="home-section" id="sec_albums">${sectionHeader("&#128193; Albums For You", "")}<div class="suggestion-grid">`;
+    let html = `<div class="home-section" id="sec_albums">${sectionHeader("&#128193; Albums For You", "", "albums", expanded)}<div class="suggestion-grid">`;
     shown.forEach(a => {
         html += `
             <div class="suggestion-card" onclick="openAlbum('${a.album_id}')">
@@ -1774,7 +1800,7 @@ function renderAlbumSuggestionsSection(expanded) {
                 <div class="card-subtitle">${esc(a.artist)}</div>
             </div>`;
     });
-    html += `</div>${showMoreBtn("albums", expanded, albums.length > ALBUM_LIMIT)}</div>`;
+    html += `</div></div>`;
     return html;
 }
 
@@ -1782,16 +1808,19 @@ function renderNewArtistsSection(expanded) {
     const artists = homeFeedData.artists;
     if (!artists.length) return "";
     const shown = expanded ? artists : artists.slice(0, ARTIST_LIMIT);
-    let html = `<div class="home-section" id="sec_artists">${sectionHeader("&#127908; New Artists", "")}<div class="suggestion-grid">`;
-    shown.forEach(a => {
+    let html = `<div class="home-section" id="sec_artists">${sectionHeader("&#127908; New Artists", "", "artists", expanded)}<div class="suggestion-grid">`;
+    shown.forEach((a, i) => {
         html += `
             <div class="suggestion-card" onclick="openArtist('${a.artist_id}')">
-                <img src="${a.thumbnail || ''}" alt="" class="round" loading="lazy" onerror="this.style.background='#333'">
+                <div class="thumb-wrap">
+                    <img src="${a.thumbnail || ''}" alt="" class="square" loading="lazy" onerror="this.style.background='#333'">
+                    ${numBadge(i + 1, "br")}
+                </div>
                 <div class="card-title">${esc(a.artist_name)}</div>
                 <div class="card-subtitle">From ${esc(a.based_on)}</div>
             </div>`;
     });
-    html += `</div>${showMoreBtn("artists", expanded, artists.length > ARTIST_LIMIT)}</div>`;
+    html += `</div></div>`;
     return html;
 }
 
