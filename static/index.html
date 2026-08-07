@@ -140,7 +140,7 @@
                 </div>
                 <div class="player-progress">
                     <span id="currentTime" class="time-label">0:00</span>
-                    <input type="range" id="progressBar" min="0" max="100" value="0" oninput="seekAudio(this.value)">
+                    <input type="range" id="progressBar" min="0" max="100" value="0" oninput="seekAudio(this.value)" onpointerdown="startScrub()" onpointerup="endScrub(this)" onpointercancel="endScrub(this)">
                     <span id="totalTime" class="time-label">0:00</span>
                 </div>
             </div>
@@ -173,7 +173,7 @@
                 <div class="np-album" id="npAlbum"></div>
                 <div class="np-progress">
                     <span id="npCurrentTime" class="time-label">0:00</span>
-                    <input type="range" id="npProgressBar" min="0" max="100" value="0" oninput="seekAudio(this.value)">
+                    <input type="range" id="npProgressBar" min="0" max="100" value="0" oninput="seekAudio(this.value)" onpointerdown="startScrub()" onpointerup="endScrub(this)" onpointercancel="endScrub(this)">
                     <span id="npTotalTime" class="time-label">0:00</span>
                 </div>
                 <div class="np-controls">

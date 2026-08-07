@@ -17,7 +17,11 @@ function cacheDomElements() {
     playerDiv = document.getElementById("player");
 }
 
+let listenersAttached = false;
+
 function attachEventListeners() {
+    if (listenersAttached) return;
+    listenersAttached = true;
     if (searchInput) {
         searchInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") doSearch();
@@ -30,17 +34,20 @@ function attachEventListeners() {
         });
 
         audio.addEventListener("timeupdate", () => {
-            if (audio.duration) {
-                const pct = (audio.currentTime / audio.duration) * 100;
-                document.getElementById("progressBar").value = pct;
+            const d = audioDuration();
+            if (d > 0) {
+                const pct = (audio.currentTime / d) * 100;
+                if (!scrubbing) {
+                    document.getElementById("progressBar").value = pct;
+                }
                 document.getElementById("currentTime").textContent = fmtTime(audio.currentTime);
-                document.getElementById("totalTime").textContent = fmtTime(audio.duration);
+                document.getElementById("totalTime").textContent = fmtTime(d);
                 const npBar = document.getElementById("npProgressBar");
                 const npCur = document.getElementById("npCurrentTime");
                 const npTot = document.getElementById("npTotalTime");
-                if (npBar) npBar.value = pct;
+                if (npBar && !scrubbing) npBar.value = pct;
                 if (npCur) npCur.textContent = fmtTime(audio.currentTime);
-                if (npTot) npTot.textContent = fmtTime(audio.duration);
+                if (npTot) npTot.textContent = fmtTime(d);
             }
         });
 
@@ -61,8 +68,6 @@ function attachEventListeners() {
             if (btn) btn.classList.remove("buffering");
             updatePlayIcon();
         });
-
-        let audioErrorRetried = false;
 
         audio.addEventListener("error", (e) => {
             console.error("[DEBUG] Audio error:", e, "src:", audio.src, "error code:", audio.error ? audio.error.code : "none");
@@ -751,7 +756,7 @@ function playNextSong(song) {
         showCleanNoInfo("Queue is full (50 songs max)");
         return;
     }
-    userQueue.push(song);
+    userQueue.unshift(song);
     showCleanNoInfo("Added to play next (" + userQueue.length + " in queue)");
 }
 
@@ -1206,14 +1211,6 @@ function toggleUpNext() {
     }
 }
 
-function skipBackward() {
-    audio.currentTime = Math.max(0, audio.currentTime - 10);
-}
-
-function skipForward() {
-    audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10);
-}
-
 /* === Kebab Menu === */
 function toggleKebabMenu(event) {
     if (event) event.stopPropagation();
@@ -1377,73 +1374,45 @@ function updateSleepBadge() {
 }
 
 /* === Audio Events === */
-audio.addEventListener("timeupdate", () => {
-    if (audio.duration) {
-        const pct = (audio.currentTime / audio.duration) * 100;
-        document.getElementById("progressBar").value = pct;
-        document.getElementById("currentTime").textContent = fmtTime(audio.currentTime);
-        document.getElementById("totalTime").textContent = fmtTime(audio.duration);
-        const npBar = document.getElementById("npProgressBar");
-        const npCur = document.getElementById("npCurrentTime");
-        const npTot = document.getElementById("npTotalTime");
-        if (npBar) npBar.value = pct;
-        if (npCur) npCur.textContent = fmtTime(audio.currentTime);
-        if (npTot) npTot.textContent = fmtTime(audio.duration);
-    }
-});
-
-audio.addEventListener("loadedmetadata", () => {
-    if (queueIndex >= 0 && queue[queueIndex]) {
-        document.getElementById("playerArtist").textContent = queue[queueIndex].artist;
-        updatePlayIcon();
-    }
-});
-
-audio.addEventListener("waiting", () => {
-    const btn = document.getElementById("playPauseBtn");
-    if (btn) btn.classList.add("buffering");
-});
-
-audio.addEventListener("playing", () => {
-    const btn = document.getElementById("playPauseBtn");
-    if (btn) btn.classList.remove("buffering");
-    updatePlayIcon();
-});
-
 let audioErrorRetried = false;
 
-audio.addEventListener("error", (e) => {
-    console.error("[DEBUG] Audio error:", e, "src:", audio.src, "error code:", audio.error ? audio.error.code : "none");
-    updatePlayIcon();
-    // First delivery may time out while the backend prepares the stream.
-    // Give it one automatic retry before declaring the song unplayable.
-    if (!audioErrorRetried && currentSong && currentSong.id) {
-        audioErrorRetried = true;
-        document.getElementById("playerArtist").textContent = "Still loading stream - retrying...";
-        document.getElementById("playPauseBtn").classList.add("buffering");
-        const q = document.getElementById("qualitySelect").value;
-        const c = document.getElementById("cleanToggle").checked;
-        setTimeout(() => {
-            audio.src = streamUrl(currentSong, q, c);
-            audio.load();
-            audio.play().catch(() => {
-                updatePlayIcon();
-                document.getElementById("playerArtist").textContent = "Error - click Play to retry";
-            });
-        }, 800);
-        return;
-    }
-    document.getElementById("playerArtist").textContent = "Error - click Play to retry";
-});
+function audioDuration() {
+    if (Number.isFinite(audio.duration) && audio.duration > 0) return audio.duration;
+    if (audio.seekable && audio.seekable.length) return audio.seekable.end(audio.seekable.length - 1);
+    return 0;
+}
 
 function playAudio(song) {
     audioErrorRetried = false;
 }
 
+let scrubbing = false;
+
+function startScrub() {
+    scrubbing = true;
+}
+
+function endScrub(el) {
+    scrubbing = false;
+    seekAudio(el.value);
+}
+
 function seekAudio(pct) {
-    if (audio.duration) {
-        audio.currentTime = (pct / 100) * audio.duration;
+    const duration = audioDuration();
+    if (duration > 0) {
+        audio.currentTime = (pct / 100) * duration;
     }
+}
+
+function skipForward() {
+    const duration = audioDuration();
+    if (duration > 0) {
+        audio.currentTime = Math.min(audio.currentTime + 10, duration);
+    }
+}
+
+function skipBackward() {
+    audio.currentTime = Math.max(audio.currentTime - 10, 0);
 }
 
 function setVolume(pct) {
