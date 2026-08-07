@@ -267,6 +267,8 @@ def get_album(browse_id: str) -> dict:
             "title": t.get("title", ""),
             "artist": ", ".join(a.get("name", "") for a in artists_list),
             "artist_id": artists_list[0].get("id", "") if artists_list else "",
+            "album": album.get("title", ""),
+            "album_id": browse_id,
             "duration": t.get("duration", ""),
             "duration_seconds": t.get("duration_seconds", 0),
             "number": t.get("trackNumber", 0),

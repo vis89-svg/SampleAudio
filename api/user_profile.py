@@ -29,7 +29,7 @@ async def log_play(entry: HistoryEntry, user: dict = Depends(get_current_user)):
                (user_id, video_id, title, artist, album, thumbnail, duration,
                 duration_seconds, artist_id, album_id, duration_played, completed,
                 skipped, skip_position, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (user["user_id"], entry.video_id, entry.title, entry.artist,
              entry.album, entry.thumbnail, entry.duration, entry.duration_seconds,
              entry.artist_id, entry.album_id, entry.duration_played, entry.completed,

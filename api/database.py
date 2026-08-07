@@ -163,16 +163,15 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_feedback_user ON recommendation_feedback(user_id, mix_type, shown_at);
         """)
 
-        with get_db() as db:
-            cols = [row[1] for row in db.execute("PRAGMA table_info(listening_history)").fetchall()]
-            if 'skipped' not in cols:
-                db.execute("ALTER TABLE listening_history ADD COLUMN skipped BOOLEAN DEFAULT 0")
-            if 'skip_position' not in cols:
-                db.execute("ALTER TABLE listening_history ADD COLUMN skip_position INTEGER DEFAULT 0")
-            if 'session_id' not in cols:
-                db.execute("ALTER TABLE listening_history ADD COLUMN session_id INTEGER REFERENCES listening_sessions(id)")
-            if 'source' not in cols:
-                db.execute("ALTER TABLE listening_history ADD COLUMN source TEXT DEFAULT 'search'")
+        cols = [row[1] for row in db.execute("PRAGMA table_info(listening_history)").fetchall()]
+        if 'skipped' not in cols:
+            db.execute("ALTER TABLE listening_history ADD COLUMN skipped BOOLEAN DEFAULT 0")
+        if 'skip_position' not in cols:
+            db.execute("ALTER TABLE listening_history ADD COLUMN skip_position INTEGER DEFAULT 0")
+        if 'session_id' not in cols:
+            db.execute("ALTER TABLE listening_history ADD COLUMN session_id INTEGER REFERENCES listening_sessions(id)")
+        if 'source' not in cols:
+            db.execute("ALTER TABLE listening_history ADD COLUMN source TEXT DEFAULT 'search'")
 
 
 @contextmanager

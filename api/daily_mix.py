@@ -251,8 +251,11 @@ def generate_new_artist_suggestions(user_id: int) -> list[dict]:
             continue
         try:
             artist_data = get_artist(artist["artist_id"])
-            related = artist_data.get("related", {}) or {}
-            results = related.get("results", []) if isinstance(related, dict) else []
+            related = artist_data.get("related", []) or []
+            if isinstance(related, dict):
+                results = related.get("results", [])
+            else:
+                results = related
             for rel in results[:5]:
                 if not isinstance(rel, dict):
                     continue
