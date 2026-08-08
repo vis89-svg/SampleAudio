@@ -84,11 +84,17 @@ function attachEventListeners() {
                     audio.play().catch(() => {
                         updatePlayIcon();
                         document.getElementById("playerArtist").textContent = "Error - click Play to retry";
+                        if (queue.length > 0 || userQueue.length > 0 || recommendations.length > 0) {
+                            setTimeout(nextTrack, 1000);
+                        }
                     });
                 }, 800);
                 return;
             }
             document.getElementById("playerArtist").textContent = "Error - click Play to retry";
+            if (queue.length > 0 || userQueue.length > 0 || recommendations.length > 0) {
+                setTimeout(nextTrack, 1000);
+            }
         });
     }
 }
@@ -138,6 +144,7 @@ function initAuth() {
     updateAuthUI();
     if (currentUser && authToken) {
         loadLikes();
+        startFeedAutoRefresh();
     }
 }
 
@@ -1379,6 +1386,9 @@ let audioErrorRetried = false;
 function audioDuration() {
     if (Number.isFinite(audio.duration) && audio.duration > 0) return audio.duration;
     if (audio.seekable && audio.seekable.length) return audio.seekable.end(audio.seekable.length - 1);
+    if (currentSong && Number.isFinite(currentSong.duration_seconds) && currentSong.duration_seconds > 0) {
+        return currentSong.duration_seconds;
+    }
     return 0;
 }
 
@@ -1476,6 +1486,12 @@ document.addEventListener("keydown", (e) => {
 /* === Navigation === */
 function showHome() {
     mainContext = "home";
+    const detailView = document.getElementById("mixDetailView");
+    const homeContent = document.getElementById("homeContent");
+    if (detailView && !detailView.classList.contains("hidden")) {
+        detailView.classList.add("hidden");
+        if (homeContent) homeContent.classList.remove("hidden");
+    }
     document.getElementById("homeView").classList.remove("hidden");
     document.getElementById("searchView").classList.add("hidden");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
@@ -1547,10 +1563,6 @@ async function fetchHomeFeed() {
 
     if (homeFeedData.mixes.length) {
         html += renderDailyMixesSection(false);
-    }
-
-    if (homeFeedData.discovery && homeFeedData.discovery.tracks && homeFeedData.discovery.tracks.length) {
-        html += renderDiscoveryMixSection(false);
     }
 
     if (homeFeedData.because.length) {
@@ -1672,15 +1684,25 @@ function renderRecentlyPlayedSection(expanded) {
 function renderDailyMixesSection(expanded) {
     const mixes = homeFeedData.mixes;
     if (!mixes.length) return "";
+    const discovery = (homeFeedData.discovery && homeFeedData.discovery.tracks && homeFeedData.discovery.tracks.length)
+        ? homeFeedData.discovery : null;
     let html = `<div class="home-section" id="sec_daily">${sectionHeader("&#127925; Daily Mixes", "", "daily", expanded)}`;
     if (!expanded) {
         html += `<div class="mix-grid">`;
+        if (discovery) {
+            html += `
+                <div class="mix-card" onclick="openMixDetail('discovery', 0)">
+                    <img src="${mixThumb(discovery)}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('discovery', 0)">&#9654;</button>
+                    <div class="mix-title">${esc(discovery.name || "Discovery Mix")}</div>
+                    <div class="mix-subtitle">${discovery.tracks.length} tracks</div>
+                </div>`;
+        }
         mixes.forEach((mix, i) => {
-            const thumb = hiRes((mix.tracks && mix.tracks[0] && mix.tracks[0].thumbnail) || "");
             const basedOn = (mix.based_on || []).join(", ");
             html += `
-                <div class="mix-card" onclick="playMix('daily', ${i})">
-                    <img src="${thumb}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="mix-card" onclick="openMixDetail('daily', ${i})">
+                    <img src="${mixThumb(mix)}" alt="" loading="lazy" onerror="this.style.background='#333'">
                     <button class="mix-play-btn" onclick="event.stopPropagation(); playMix('daily', ${i})">&#9654;</button>
                     <div class="mix-title">${esc(mix.name)}</div>
                     <div class="mix-subtitle">${esc(basedOn)}</div>
@@ -1688,6 +1710,10 @@ function renderDailyMixesSection(expanded) {
         });
         html += `</div>`;
     } else {
+        if (discovery) {
+            html += `<div class="mix-track-section-title">${esc(discovery.name || "Discovery Mix")} &middot; ${discovery.tracks.length} tracks</div>`;
+            html += (discovery.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('discovery', 0, ${j})`)).join("");
+        }
         mixes.forEach((mix, i) => {
             const basedOn = (mix.based_on || []).join(", ");
             html += `<div class="mix-track-section-title">${esc(mix.name)}${basedOn ? ' &middot; ' + esc(basedOn) : ''}</div>`;
@@ -1695,6 +1721,11 @@ function renderDailyMixesSection(expanded) {
         });
     }
     return html + `</div>`;
+}
+
+function mixThumb(mix) {
+    const t = (mix.tracks || []).find(x => x && x.thumbnail) || (mix.tracks || [])[0] || {};
+    return hiRes(t.thumbnail || "");
 }
 
 function renderDiscoveryMixSection(expanded) {
@@ -1732,11 +1763,11 @@ function renderBecauseYouLikedSection(expanded) {
     let html = `<div class="home-section" id="sec_because">${sectionHeader("&#10084;&#65039; Because You Liked", "", "because", expanded)}`;
     if (!expanded) {
         html += `<div class="mix-grid">`;
-        suggestions.slice(0, 6).forEach((s, i) => {
+        suggestions.slice(0, 10).forEach((s, i) => {
             const first = (s.tracks || [])[0] || {};
             const cover = hiRes(first.thumbnail || "");
             html += `
-                <div class="mix-card" onclick="playBecauseLiked(${i})">
+                <div class="mix-card" onclick="openMixDetail('because', ${i})">
                     <div class="thumb-wrap">
                         <img src="${cover}" alt="" class="square" loading="lazy" onerror="this.style.background='#333'">
                         ${numBadge(1, "bl")}
@@ -1812,6 +1843,61 @@ function playMixTrack(type, mixIndex, trackIndex) {
     playSong(trackIndex);
 }
 
+/* === Mix Detail Page === */
+function openMixDetail(type, mixIndex) {
+    let title = "", subtitle = "", tracks = null;
+    if (type === 'daily') {
+        const mix = homeFeedData.mixes[mixIndex];
+        if (!mix) return;
+        title = mix.name || "Daily Mix";
+        subtitle = (mix.based_on || []).join(", ");
+        tracks = mix.tracks || [];
+    } else if (type === 'discovery') {
+        const mix = homeFeedData.discovery;
+        if (!mix) return;
+        title = mix.name || "Discovery Mix";
+        subtitle = "New music tailored for you";
+        tracks = mix.tracks || [];
+    } else if (type === 'because') {
+        const s = homeFeedData.because[mixIndex];
+        if (!s) return;
+        title = s.seed_title || "Because You Liked";
+        subtitle = "Suggested by your likes";
+        tracks = s.tracks || [];
+    }
+    if (!tracks.length) return;
+
+    document.getElementById("homeContent").classList.add("hidden");
+    const view = document.getElementById("mixDetailView");
+    view.classList.remove("hidden");
+    view.innerHTML = `
+        <button class="back-btn" onclick="closeMixDetail()">&larr; Back</button>
+        <div class="artist-header">
+            <div>
+                <h2>${esc(title)}</h2>
+                <div style="color:#888;margin-top:4px">${esc(subtitle)} &middot; ${tracks.length} songs</div>
+            </div>
+            <button class="mix-play-btn" onclick="playMixTrack('${type}', ${mixIndex}, 0)" title="Play all">&#9654; Play</button>
+        </div>
+        <div class="section-title">Songs</div>
+        ${tracks.map((t, i) => `
+            <div class="song-row" onclick="playMixTrack('${type}', ${mixIndex}, ${i})">
+                <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="info">
+                    <div class="title">${esc(t.title || "Unknown")}</div>
+                    <div class="subtitle">${esc(t.artist || "")}${t.album ? ' &middot; ' + esc(t.album) : ''}</div>
+                </div>
+                <div class="duration">${t.duration || ''}</div>
+                ${kebabBtn(t)}
+            </div>
+        `).join("")}`;
+}
+
+function closeMixDetail() {
+    document.getElementById("mixDetailView").classList.add("hidden");
+    document.getElementById("homeContent").classList.remove("hidden");
+}
+
 /* === Play Mix from Home === */
 function enqueueMixTracks(tracks) {
     userQueue.length = 0;
@@ -1871,6 +1957,72 @@ async function playBecauseLiked(index) {
 }
 
 /* === Initialize Auth on page load === */
+let feedAutoRefreshTimer = null;
+
+function startFeedAutoRefresh() {
+    if (feedAutoRefreshTimer) return;
+    feedAutoRefreshTimer = setInterval(() => {
+        if (mainContext !== "home") return;
+        const recentEl = document.getElementById("sec_recent");
+        const artistsEl = document.getElementById("sec_artists");
+        if (!recentEl && !artistsEl) return;
+        Promise.all([
+            authFetch("/api/user/recently-played").then(r => r.ok ? r.json() : {tracks: []}),
+            authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
+        ]).then(([recent, artists]) => {
+            homeFeedData.recent = (recent.tracks || []).map(t => ({ ...t, id: t.id || t.video_id }));
+            homeFeedData.artists = artists.artists || [];
+            if (recentEl && homeFeedData.recent.length) {
+                recentEl.outerHTML = renderRecentSectionInline();
+            } else if (recentEl) {
+                recentEl.remove();
+            }
+            if (artistsEl && homeFeedData.artists.length) {
+                artistsEl.outerHTML = renderArtistsSectionInline();
+            } else if (artistsEl) {
+                artistsEl.remove();
+            }
+        }).catch(() => {});
+    }, 30000);
+}
+
+function renderRecentSectionInline() {
+    const tracks = homeFeedData.recent;
+    const shown = tracks.slice(0, 6);
+    let html = `<div class="home-section" id="sec_recent">
+        ${sectionHeader("&#128337; Recently Played", "Songs you have listened to", "recent", false)}
+        <div class="suggestion-grid">`;
+    shown.forEach((t, i) => {
+        html += `
+            <div class="suggestion-card" onclick="playSong(${i})">
+                <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="card-title">${esc(t.title || "Unknown")}</div>
+                <div class="card-subtitle">${esc(t.artist || "")}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+function renderArtistsSectionInline() {
+    const artists = homeFeedData.artists;
+    const shown = artists.slice(0, ARTIST_LIMIT);
+    let html = `<div class="home-section" id="sec_artists">${sectionHeader("&#127908; New Artists", "", "artists", false)}<div class="suggestion-grid">`;
+    shown.forEach((a, i) => {
+        html += `
+            <div class="suggestion-card" onclick="openArtist('${a.artist_id}')">
+                <div class="thumb-wrap">
+                    <img src="${a.thumbnail || ''}" alt="" class="square" loading="lazy" onerror="this.style.background='#333'">
+                    ${numBadge(i + 1, "br")}
+                </div>
+                <div class="card-title">${esc(a.artist_name)}</div>
+                <div class="card-subtitle">From ${esc(a.based_on)}</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
 function safeInitAuth() {
     try {
         cacheDomElements();

@@ -22,7 +22,8 @@ async def update_session(user_id: int, play_data: dict) -> int | None:
     with get_db() as db:
         last_play = db.execute(
             """SELECT id, session_id, played_at FROM listening_history
-               WHERE user_id = ? ORDER BY played_at DESC LIMIT 1""",
+               WHERE user_id = ? AND session_id IS NOT NULL
+               ORDER BY id DESC LIMIT 1""",
             (user_id,),
         ).fetchone()
 
@@ -43,8 +44,8 @@ async def update_session(user_id: int, play_data: dict) -> int | None:
             )
             session_id = cursor.lastrowid
 
-        db.execute(
-            """INSERT INTO session_songs
+        cur = db.execute(
+            """INSERT OR IGNORE INTO session_songs
                (session_id, song_id, video_id, artist_id, album_id, play_order, completed, duration_played)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (session_id, video_id, video_id, artist_id, album_id,
@@ -53,20 +54,24 @@ async def update_session(user_id: int, play_data: dict) -> int | None:
 
         db.execute(
             """UPDATE listening_sessions
-               SET songs_count = songs_count + 1,
+               SET songs_count = songs_count + ?,
                    ended_at = ?
                WHERE id = ?""",
-            (now, session_id),
+            (cur.rowcount, now, session_id),
         )
 
         db.execute(
             """UPDATE listening_history SET session_id = ?
-               WHERE user_id = ? AND video_id = ? AND session_id IS NULL
-               ORDER BY id DESC LIMIT 1""",
+               WHERE id = (
+                   SELECT id FROM listening_history
+                   WHERE user_id = ? AND video_id = ? AND session_id IS NULL
+                   ORDER BY id DESC LIMIT 1
+               )""",
             (session_id, user_id, video_id),
         )
 
-        return session_id
+    await compute_fingerprint(session_id)
+    return session_id
 
 
 def _get_next_play_order(db, session_id: int) -> int:

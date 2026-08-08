@@ -329,6 +329,10 @@ header h1 {
     padding: 20px 0;
 }
 
+.mix-detail-view {
+    padding: 20px 0;
+}
+
 .show-more-btn {
     display: block;
     width: 100%;

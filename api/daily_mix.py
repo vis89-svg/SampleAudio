@@ -11,7 +11,29 @@ from api.taste_engine.similarity import get_artist_transitions
 logger = logging.getLogger(__name__)
 
 MIX_SIZE = 25
-DAILY_MIX_COUNT = 3
+DAILY_MIX_COUNT = 6
+RECENT_DAYS = 7
+RECENT_WEIGHT = 3
+
+
+def _weighted_top_artists(user_id: int, limit: int = 10) -> list[dict]:
+    """Most-played artists, with plays in the last RECENT_DAYS weighted heavier.
+
+    Used only by recommendation sections (New Artists) so they surface artists
+    the user is exploring right now, not just lifelong favorites. All-time
+    play_count is still returned for display; ranking uses the weighted score.
+    """
+    with get_db() as db:
+        rows = db.execute(
+            """SELECT artist, artist_id, COUNT(*) as play_count,
+                      SUM(CASE WHEN played_at >= datetime('now', ?) THEN ? ELSE 1 END) as score
+               FROM listening_history
+               WHERE user_id = ? AND artist IS NOT NULL AND artist != ''
+               GROUP BY artist
+               ORDER BY score DESC, play_count DESC LIMIT ?""",
+            (f"-{RECENT_DAYS} days", RECENT_WEIGHT, user_id, limit),
+        ).fetchall()
+        return [{"artist": r["artist"], "artist_id": r["artist_id"], "play_count": r["play_count"]} for r in rows]
 
 
 def get_top_artists(user_id: int, limit: int = 20) -> list[dict]:
@@ -107,7 +129,7 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
         if tracks:
             mixes.append({
                 "name": f"Daily Mix {len(mixes) + 1}",
-                "based_on": cluster_artists[:3],
+                "based_on": _mix_based_on(tracks),
                 "tracks": [_format_track(t) for t in tracks],
                 "engine_version": "v2.0",
             })
@@ -164,7 +186,7 @@ def generate_because_you_liked(user_id: int) -> list[dict]:
     if not liked:
         return []
 
-    seeds = liked[:6]
+    seeds = liked[:10]
     results = []
     used_ids = set()
 
@@ -205,19 +227,24 @@ def generate_because_you_liked(user_id: int) -> list[dict]:
 
 
 def generate_album_suggestions(user_id: int) -> list[dict]:
-    """Suggest albums user has partially played but not completed."""
+    """Suggest albums user has partially played but not completed.
+
+    Ranking is weighted toward albums played recently (RECENT_WEIGHT) so
+    albums the user is actively listening to surface above old play counts.
+    """
     with get_db() as db:
         rows = db.execute(
             """SELECT album, album_id, artist, artist_id,
                       COUNT(*) as play_count,
-                      COUNT(DISTINCT video_id) as unique_tracks
+                      COUNT(DISTINCT video_id) as unique_tracks,
+                      SUM(CASE WHEN played_at >= datetime('now', ?) THEN ? ELSE 1 END) as score
                FROM listening_history
                WHERE user_id = ? AND album IS NOT NULL AND album_id IS NOT NULL
                GROUP BY album_id
                HAVING play_count >= 1
-               ORDER BY play_count DESC
+               ORDER BY score DESC, play_count DESC
                LIMIT 10""",
-            (user_id,),
+            (f"-{RECENT_DAYS} days", RECENT_WEIGHT, user_id),
         ).fetchall()
 
     suggestions = []
@@ -245,8 +272,12 @@ def generate_album_suggestions(user_id: int) -> list[dict]:
 
 
 def generate_new_artist_suggestions(user_id: int) -> list[dict]:
-    """Suggest new artists based on related artists of favorites."""
-    top_artists = get_top_artists(user_id, limit=10)
+    """Suggest new artists based on related artists of favorites.
+
+    Favorites are weighted toward what the user has played recently so the
+    section reflects current exploration, not just all-time play counts.
+    """
+    top_artists = _weighted_top_artists(user_id, limit=10)
     if not top_artists:
         return []
 
@@ -442,15 +473,31 @@ def _format_track(track: dict) -> dict:
     }
 
 
+def _mix_based_on(tracks: list[dict], limit: int = 2) -> list[str]:
+    """Top 1-2 artist names by number of songs in the mix.
+
+    For songs with multiple artists ("A, B, C"), only the first artist name
+    counts, so collabs don't spread the vote across several names."""
+    counts: dict[str, int] = {}
+    for t in tracks:
+        artist = (t.get("artist") or "").strip()
+        if not artist:
+            continue
+        first = artist.split(",")[0].strip()
+        if first:
+            counts[first] = counts.get(first, 0) + 1
+    ranked = sorted(counts, key=counts.get, reverse=True)[:limit]
+    return ranked
+
+
 def _fallback_mix(user_id: int, index: int = 1, exclude_artists: set | None = None) -> dict | None:
     """Build one artist-based mix from the user's top artists.
 
     `exclude_artists` is a mutable set: any artist used here is added to it so
     consecutive fallback mixes don't repeat artists."""
-    top_artists = get_top_artists(user_id, limit=15)
+    top_artists = get_top_artists(user_id, limit=30)
     excluded = set(exclude_artists or [])
     tracks = []
-    based_on = []
     artists_used = set()
 
     for artist in top_artists:
@@ -458,7 +505,6 @@ def _fallback_mix(user_id: int, index: int = 1, exclude_artists: set | None = No
         if not aid or aid in excluded or aid in artists_used:
             continue
         artists_used.add(aid)
-        based_on.append(artist["artist"])
         try:
             artist_data = get_artist(aid)
             top_songs = artist_data.get("top_songs", [])[:8]
@@ -491,7 +537,7 @@ def _fallback_mix(user_id: int, index: int = 1, exclude_artists: set | None = No
 
     return {
         "name": f"Daily Mix {index}",
-        "based_on": based_on[:3],
+        "based_on": _mix_based_on(tracks),
         "tracks": tracks[:MIX_SIZE],
         "engine_version": "v2.0",
     }
