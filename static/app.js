@@ -571,6 +571,53 @@ function switchTab(tab) {
     if (cached) renderResults(cached);
 }
 
+let artistData = null;
+let artistSection = 'most';
+let artistAllSongs = null;
+
+function upsizeThumb(url) {
+    if (!url) return '';
+    return url.replace(/=w\d+-h\d+/, '=w800-h800');
+}
+
+function playCountBadge(song) {
+    if (song && song.play_count > 0) {
+        return `<span class="play-count">${fmtPlays(song.play_count)}</span>`;
+    }
+    return '';
+}
+
+function fmtPlays(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M plays';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K plays';
+    return n + (n === 1 ? ' play' : ' plays');
+}
+
+function artistSongRows(songs, action) {
+    return songs.map((s, i) => `
+        <div class="song-row" onclick="${action}(${i})">
+            <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <div class="info">
+                <div class="title">${esc(s.title || '')}</div>
+                <div class="subtitle">${esc(s.artist || '')}</div>
+            </div>
+            ${playCountBadge(s)}
+            <div class="duration">${s.duration || ''}</div>
+            ${kebabBtn(s)}
+        </div>
+    `).join("");
+}
+
+function albumGrid(albums) {
+    return `<div class="results">${(albums || []).map(a => `
+        <div class="album-card" onclick="openAlbum('${a.id}')">
+            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+            <div class="title">${esc(a.title || '')}</div>
+            <div class="artist-name">${esc(a.year || '')}</div>
+        </div>
+    `).join("")}</div>`;
+}
+
 async function openArtist(browseId) {
     showLoading();
     const homeViewEl = document.getElementById("homeView");
@@ -583,47 +630,238 @@ async function openArtist(browseId) {
     artistView.classList.remove("hidden");
 
     try {
-        const resp = await fetch(`/api/artist/${browseId}`);
+        const [resp, extraResp] = await Promise.all([
+            authFetch(`/api/artist/${browseId}`),
+            authFetch(`/api/artist/${browseId}/playlists`),
+        ]);
         const data = await resp.json();
+        const extras = extraResp.ok ? await extraResp.json() : {};
+
+        artistData = data;
+        artistData.playlists = extras;
+        artistSection = 'most';
+        artistAllSongs = null;
 
         queue = data.top_songs || [];
         queueSource = 'other';
 
-        artistView.innerHTML = `
-            <button class="back-btn" onclick="backToResults()">&larr; Back</button>
-            <div class="artist-header">
-                <img src="${data.thumbnail || ''}" alt="" onerror="this.style.background='#333'">
-                <div>
-                    <h2>${esc(data.name)}</h2>
-                </div>
-            </div>
-            <div class="section-title">Top Songs</div>
-            ${queue.map((s, i) => `
-                <div class="song-row" onclick="playSong(${i})">
-                    <img src="${s.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                    <div class="info">
-                        <div class="title">${esc(s.title)}</div>
-                        <div class="subtitle">${esc(s.artist)}</div>
-                    </div>
-                    <div class="duration">${s.duration || ''}</div>
-                    ${kebabBtn(s)}
-                </div>
-            `).join("")}
-            ${data.albums && data.albums.length ? `
-                <div class="section-title" style="margin-top:24px">Albums</div>
-                <div class="results">
-                    ${data.albums.map(a => `
-                        <div class="album-card" onclick="openAlbum('${a.id}')">
-                            <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                            <div class="title">${esc(a.title)}</div>
-                            <div class="artist-name">${a.year || ''}</div>
-                        </div>
-                    `).join("")}
-                </div>
-            ` : ''}
-        `;
+        authFetch(`/api/artist/${browseId}/featuring`)
+            .then(r => r.ok ? r.json() : {})
+            .then(f => {
+                if (artistData && artistData.id === browseId) {
+                    artistData.featuring = f.tracks || [];
+                    if (document.getElementById("artistFeaturing")) {
+                        document.getElementById("artistFeaturing").innerHTML = featuringHtml();
+                    }
+                }
+            })
+            .catch(() => {});
+
+        renderArtistView();
     } catch (err) {
         artistView.innerHTML = `<div class="empty-state">Failed to load artist</div>`;
+    }
+}
+
+function renderArtistView() {
+    if (!artistData) return;
+    const d = artistData;
+    const topSongs = d.top_songs || [];
+    const monthly = d.monthly_listeners ? ` ${d.monthly_listeners} monthly listeners` : '';
+    const bigThumb = upsizeThumb(d.thumbnail);
+
+    let content = '';
+    if (artistSection === 'most') {
+        const shown = topSongs.slice(0, 8);
+        content = `
+            <div class="section-title">Most Played</div>
+            ${artistSongRows(shown, 'playSong')}
+            ${(d.total_songs && d.total_songs > shown.length) ? `<button class="see-more-btn" onclick="seeAllArtistSongs()">See More &darr;</button>` : ''}
+        `;
+    } else if (artistSection === 'recent') {
+        const recent = (d.singles || []).concat(d.albums || [])
+            .sort((x, y) => parseInt(y.year || 0, 10) - parseInt(x.year || 0, 10))
+            .slice(0, 12);
+        content = `<div class="section-title">Recently Released</div>${albumGrid(recent)}`;
+    } else if (artistSection === 'albums') {
+        content = `<div class="section-title">Albums</div>${albumGrid(d.albums || [])}`;
+    } else if (artistSection === 'playlists') {
+        const featured = (d.playlists && d.playlists.featured) || [];
+        const byArtist = (d.playlists && d.playlists.by_artist) || [];
+        content = `
+            ${featured.length ? `
+                <div class="section-title">Featured On</div>
+                <div class="results">${featured.map(p => `
+                    <div class="album-card" onclick="openArtistPlaylist('${p.id}')">
+                        <img src="${p.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                        <div class="title">${esc(p.title || '')}</div>
+                        <div class="artist-name">Playlist</div>
+                    </div>
+                `).join("")}</div>
+            ` : ''}
+            ${byArtist.length ? `
+                <div class="section-title" style="margin-top:24px">Playlists by ${esc(d.name)}</div>
+                <div class="results">${byArtist.map(p => `
+                    <div class="album-card" onclick="openArtistPlaylist('${p.id}')">
+                        <img src="${p.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                        <div class="title">${esc(p.title || '')}</div>
+                        <div class="artist-name">Playlist</div>
+                    </div>
+                `).join("")}</div>
+            ` : ''}
+            ${(!featured.length && !byArtist.length) ? `<div class="empty-state">No playlists found</div>` : ''}
+        `;
+    }
+
+    const related = (d.related || []).slice(0, 12);
+
+    artistView.innerHTML = `
+        <button class="back-btn" onclick="backToResults()">&larr; Back</button>
+        <div class="artist-banner">
+            <img class="artist-banner-bg" src="${bigThumb}" alt="" onerror="this.style.display='none'">
+            <div class="artist-banner-overlay"></div>
+            <div class="artist-banner-content">
+                <img class="artist-banner-img" src="${d.thumbnail || ''}" alt="" onerror="this.style.background='#333'">
+                <div class="artist-banner-text">
+                    <div class="artist-banner-title">${esc(d.name)}</div>
+                    ${monthly ? `<div class="artist-banner-sub">${monthly}</div>` : ''}
+                    <div class="artist-banner-buttons">
+                        ${topSongs.length ? `<button class="mix-play-btn" onclick="playSong(0)">&#9654; Play</button>` : ''}
+                        <button class="artist-radio-btn" onclick="playArtistRadio()">&#9658; Radio</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="artist-section-tabs">
+            <button class="artist-section-tab ${artistSection === 'most' ? 'active' : ''}" onclick="artistTab('most')">Most Played</button>
+            <button class="artist-section-tab ${artistSection === 'recent' ? 'active' : ''}" onclick="artistTab('recent')">Recently Released</button>
+            <button class="artist-section-tab ${artistSection === 'albums' ? 'active' : ''}" onclick="artistTab('albums')">Albums</button>
+            <button class="artist-section-tab ${artistSection === 'playlists' ? 'active' : ''}" onclick="artistTab('playlists')">Playlists</button>
+        </div>
+        <div id="artistSectionContent">${content}</div>
+        <div id="artistFeaturing">${featuringHtml()}</div>
+        ${related.length ? `
+            <div class="section-title" style="margin-top:24px">Fans Also Like</div>
+            <div class="results">${related.map(r => `
+                <div class="artist-card" onclick="openArtist('${r.id}')">
+                    <img src="${r.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="title">${esc(r.name || '')}</div>
+                    <div class="artist-name">${esc(r.subscribers || 'Artist')}</div>
+                </div>
+            `).join("")}</div>
+        ` : ''}
+    `;
+}
+
+function featuringHtml() {
+    if (!artistData || !artistData.featuring || !artistData.featuring.length) return '';
+    const d = artistData;
+    const tracks = d.featuring;
+    return `
+        <div class="section-title" style="margin-top:24px">Songs Featuring ${esc(d.name)}</div>
+        ${tracks.map((t, i) => `
+            <div class="song-row" onclick="playFeaturingTrack(${i})">
+                <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="info">
+                    <div class="title">${esc(t.title || '')}</div>
+                    <div class="subtitle">${esc(t.artist || '')}</div>
+                </div>
+                <div class="duration">${t.duration || ''}</div>
+                ${kebabBtn(t)}
+            </div>
+        `).join("")}
+    `;
+}
+
+function playFeaturingTrack(i) {
+    if (!artistData || !artistData.featuring) return;
+    queue = artistData.featuring;
+    queueSource = 'other';
+    playSong(i);
+}
+
+function artistTab(tab) {
+    artistSection = tab;
+    renderArtistView();
+}
+
+async function seeAllArtistSongs() {
+    if (!artistData) return;
+    if (!artistAllSongs) {
+        const resp = await authFetch(`/api/artist/${artistData.id}/songs`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        artistAllSongs = data.songs || [];
+    }
+    const songs = artistAllSongs;
+    document.getElementById("artistSectionContent").innerHTML = `
+        <button class="back-btn" style="margin-top:8px" onclick="artistTab('most')">&larr; Back</button>
+        <div class="section-title">All Songs &middot; ${songs.length}</div>
+        ${artistSongRows(songs, 'playArtistAllSong')}
+    `;
+}
+
+function playArtistAllSong(i) {
+    if (!artistAllSongs) return;
+    queue = artistAllSongs;
+    queueSource = 'other';
+    playSong(i);
+}
+
+async function playArtistRadio() {
+    if (!artistData) return;
+    showCleanNoInfo("Starting artist radio...");
+    try {
+        const resp = await authFetch(`/api/artist/${artistData.id}/radio`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const tracks = data.tracks || [];
+        if (!tracks.length) return;
+        queue = tracks;
+        queueSource = 'artist-radio';
+        enqueueMixTracks(queue.slice(1));
+        playSong(0);
+    } catch (e) {
+        showCleanNoInfo("Failed to start radio");
+    }
+}
+
+async function openArtistPlaylist(playlistId, title) {
+    try {
+        const resp = await authFetch(`/api/playlist/${playlistId}`);
+        if (!resp.ok) {
+            artistView.innerHTML = `<div class="empty-state">Failed to load playlist</div>`;
+            return;
+        }
+        const data = await resp.json();
+        const tracks = data.tracks || [];
+        const name = data.title || title || 'Playlist';
+        queue = tracks;
+        queueSource = 'other';
+        artistView.innerHTML = `
+            <button class="back-btn" onclick="renderArtistView()">&larr; Back</button>
+            <div class="artist-header">
+                <div>
+                    <h2>${esc(name)}</h2>
+                    <div style="color:#888;margin-top:4px">${tracks.length} songs</div>
+                </div>
+                <button class="mix-play-btn" onclick="playSong(0)" title="Play all">&#9654; Play</button>
+            </div>
+            <div class="section-title">Songs</div>
+            ${tracks.map((t, i) => `
+                <div class="song-row" onclick="playSong(${i})">
+                    <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(t.title || '')}</div>
+                        <div class="subtitle">${esc(t.artist || '')}</div>
+                    </div>
+                    <div class="duration">${t.duration || ''}</div>
+                    ${kebabBtn(t)}
+                </div>
+            `).join("")}
+        `;
+    } catch (e) {
+        artistView.innerHTML = `<div class="empty-state">Failed to load playlist</div>`;
     }
 }
 
@@ -703,7 +941,7 @@ function playSong(index) {
         logPlayCompletion(currentSong, songCompleted, !songCompleted);
         pushToHistory(currentSong);
     }
-    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits' && queueSource !== 'genres') {
+    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits' && queueSource !== 'genres' && queueSource !== 'artist-radio') {
         clearStaleQueueItems();
     }
     audioErrorRetried = false;

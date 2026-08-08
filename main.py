@@ -20,9 +20,11 @@ from api.audio import get_audio_duration, normalize_audio, trim_audio
 from api.sponsorblock import get_skip_segments, total_skipped
 from api.jiosaavn import search_songs as search_saavn_songs
 from api.matcher import match_song
-from api.auth import register_user, authenticate_user, create_token, get_user_profile, get_current_user
+from api.auth import register_user, authenticate_user, create_token, get_user_profile, get_current_user, get_optional_user
 from api.user_profile import router as user_router
 from api.charts import get_all_charts, get_hot_hits
+from api.search import (get_artist_page, get_artist_featuring, get_artist_radio,
+                        get_playlist as get_playlist_tracks)
 from api.database import init_db
 from config import (DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL,
                     STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP,
@@ -64,17 +66,17 @@ def api_search_songs(q: str = Query(..., min_length=1), limit: int = Query(10, g
 
 
 @app.get("/api/artist/{browse_id}")
-def api_artist(browse_id: str):
+def api_artist(browse_id: str, user: dict | None = Depends(get_optional_user)):
     try:
-        return get_artist(browse_id)
+        return get_artist(browse_id, user["user_id"] if user else None)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/artist/{browse_id}/songs")
-def api_artist_songs(browse_id: str):
+def api_artist_songs(browse_id: str, user: dict | None = Depends(get_optional_user)):
     try:
-        songs = get_artist_all_songs(browse_id)
+        songs = get_artist_all_songs(browse_id, user["user_id"] if user else None)
         return {"songs": songs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -85,6 +87,39 @@ def api_artist_albums(browse_id: str):
     try:
         artist = get_artist(browse_id)
         return {"albums": artist.get("albums", [])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artist/{browse_id}/playlists")
+def api_artist_playlists(browse_id: str):
+    try:
+        page = get_artist_page(browse_id)
+        return {"featured": page.get("featured", []), "by_artist": page.get("by_artist", [])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artist/{browse_id}/radio")
+def api_artist_radio(browse_id: str):
+    try:
+        return {"tracks": get_artist_radio(browse_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artist/{browse_id}/featuring")
+def api_artist_featuring(browse_id: str):
+    try:
+        return {"tracks": get_artist_featuring(browse_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/playlist/{playlist_id}")
+def api_playlist(playlist_id: str):
+    try:
+        return get_playlist_tracks(playlist_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

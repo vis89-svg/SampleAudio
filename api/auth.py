@@ -8,6 +8,19 @@ from config import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS
 from api.database import get_db
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
+
+
+def get_optional_user(credentials: HTTPAuthorizationCredentials | None = Security(optional_security)) -> dict | None:
+    """Like get_current_user, but returns None when no (or an invalid) token
+    is present — used by endpoints that enrich data per-user when logged in
+    but stay fully functional for guests."""
+    if credentials is None:
+        return None
+    try:
+        return get_current_user(credentials)
+    except HTTPException:
+        return None
 
 
 def hash_password(password: str) -> str:
