@@ -1008,7 +1008,7 @@ function playSong(index) {
         logPlayCompletion(currentSong, songCompleted, !songCompleted);
         pushToHistory(currentSong);
     }
-    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits' && queueSource !== 'genres' && queueSource !== 'artist-radio') {
+    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits' && queueSource !== 'genres' && queueSource !== 'artist-radio' && queueSource !== 'discover') {
         clearStaleQueueItems();
     }
     audioErrorRetried = false;
@@ -1799,6 +1799,7 @@ function showHome() {
         if (homeContent) homeContent.classList.remove("hidden");
     }
     document.getElementById("homeView").classList.remove("hidden");
+    document.getElementById("discoverView").classList.add("hidden");
     document.getElementById("searchView").classList.add("hidden");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
     document.querySelector(".nav-btn:first-child").classList.add("active");
@@ -1808,9 +1809,186 @@ function showHome() {
 function showSearch() {
     mainContext = "search";
     document.getElementById("homeView").classList.add("hidden");
+    document.getElementById("discoverView").classList.add("hidden");
     document.getElementById("searchView").classList.remove("hidden");
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+    document.querySelector(".nav-btn:nth-child(3)").classList.add("active");
+}
+
+/* === Discover === */
+let discoverData = null;
+let discoverCatCache = {};
+let discoverCatKey = null;
+
+const DISCOVER_GRADIENTS = [
+    "linear-gradient(135deg,#4776e6,#8e54e9)",
+    "linear-gradient(135deg,#f7971e,#ffd200)",
+    "linear-gradient(135deg,#11998e,#38ef7d)",
+    "linear-gradient(135deg,#e53935,#e35d5b)",
+    "linear-gradient(135deg,#8e2de2,#4a00e0)",
+    "linear-gradient(135deg,#00c6ff,#0072ff)",
+    "linear-gradient(135deg,#f857a6,#ff5858)",
+    "linear-gradient(135deg,#fc4a1a,#f7b733)",
+    "linear-gradient(135deg,#1d976c,#93f9b9)",
+    "linear-gradient(135deg,#606c88,#3f4c6b)",
+    "linear-gradient(135deg,#b24592,#f15f79)",
+];
+
+function discoverTileHtml(item, index) {
+    const g = DISCOVER_GRADIENTS[index % DISCOVER_GRADIENTS.length];
+    return `<div class="discover-tile" style="background:${g}" onclick="openDiscoverCategory('${item.key}')">
+        <span>${esc(item.name)}</span>
+    </div>`;
+}
+
+function showDiscover() {
+    mainContext = "discover";
+    document.getElementById("homeView").classList.add("hidden");
+    document.getElementById("searchView").classList.add("hidden");
+    document.getElementById("discoverView").classList.remove("hidden");
+    document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
     document.querySelector(".nav-btn:nth-child(2)").classList.add("active");
+    renderDiscover();
+}
+
+async function renderDiscover() {
+    const container = document.getElementById("discoverContent");
+    if (!discoverData) {
+        container.innerHTML = `<div class="loading">Loading Discover...</div>`;
+        try {
+            const resp = await fetch("/api/discover");
+            if (!resp.ok) throw new Error("failed");
+            discoverData = await resp.json();
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state">Failed to load Discover</div>`;
+            return;
+        }
+    }
+    const d = discoverData;
+    const sections = [
+        ["Moods & Moments", d.moods || []],
+        ["Genres", d.genres || []],
+        ["Regional & Languages", d.regional || []],
+        ["Decades & Retro", d.decades || []],
+    ];
+    let html = `<button class="back-btn" onclick="showHome()">&larr; Back to Home</button>`;
+    for (const [title, items] of sections) {
+        if (!items.length) continue;
+        html += `<div class="section-title" style="margin-top:20px">${esc(title)}</div>`;
+        html += `<div class="discover-grid">${items.map(discoverTileHtml).join("")}</div>`;
+    }
+    container.innerHTML = html;
+}
+
+async function openDiscoverCategory(key) {
+    discoverCatKey = key;
+    const container = document.getElementById("discoverContent");
+    container.innerHTML = `<div class="loading">Loading...</div>`;
+    let data = discoverCatCache[key];
+    if (!data) {
+        try {
+            const resp = await fetch(`/api/discover/category/${key}`);
+            if (!resp.ok) throw new Error("failed");
+            data = await resp.json();
+            discoverCatCache[key] = data;
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state">Failed to load this category</div>`;
+            return;
+        }
+    }
+    const allPlaylists = [];
+    for (const s of data.sections || []) {
+        for (const p of s.playlists || []) allPlaylists.push(p);
+    }
+    let html = `
+        <button class="back-btn" onclick="renderDiscover()">&larr; Back to Discover</button>
+        <div class="artist-header">
+            <div>
+                <h2>${esc(data.name || key)}</h2>
+                <div style="color:#888;margin-top:4px">${allPlaylists.length} playlists</div>
+            </div>
+            ${allPlaylists.length ? `<button class="mix-play-btn" onclick="playDiscoverAll('${key}')" title="Play the first 50 tracks across playlists">&#9654; Play All</button>` : ''}
+        </div>
+    `;
+    for (const s of data.sections || []) {
+        if (!s.playlists || !s.playlists.length) continue;
+        html += `<div class="section-title">${esc(s.name)}</div><div class="results">`;
+        html += s.playlists.map(p => `
+            <div class="album-card" onclick="openDiscoverPlaylist('${p.id}')">
+                ${p.thumbnail
+                    ? `<img src="${p.thumbnail}" alt="" loading="lazy" onerror="this.style.background='#333'">`
+                    : `<div class="discover-card-fallback">${esc(p.title)}</div>`}
+                <div class="title">${esc(p.title)}</div>
+                <div class="artist-name">${p.hot ? 'Hot Hits' : 'Playlist'}</div>
+            </div>
+        `).join("");
+        html += `</div>`;
+    }
+    container.innerHTML = html;
+}
+
+async function openDiscoverPlaylist(playlistId) {
+    const container = document.getElementById("discoverContent");
+    container.innerHTML = `<div class="loading">Loading playlist...</div>`;
+    try {
+        const resp = await authFetch(`/api/playlist/${playlistId}`);
+        if (!resp.ok) throw new Error("failed");
+        const data = await resp.json();
+        const tracks = data.tracks || [];
+        queue = tracks;
+        queueSource = 'other';
+        container.innerHTML = `
+            <button class="back-btn" onclick="openDiscoverCategory('${discoverCatKey}')">&larr; Back</button>
+            <div class="artist-header">
+                <div>
+                    <h2>${esc(data.title || 'Playlist')}</h2>
+                    <div style="color:#888;margin-top:4px">${tracks.length} songs</div>
+                </div>
+                <button class="mix-play-btn" onclick="playSong(0)" title="Play all">&#9654; Play</button>
+            </div>
+            <div class="section-title">Songs</div>
+            ${tracks.map((t, i) => `
+                <div class="song-row" onclick="playSong(${i})">
+                    <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(t.title || '')}</div>
+                        <div class="subtitle">${esc(t.artist || '')}</div>
+                    </div>
+                    <div class="duration">${t.duration || ''}</div>
+                    ${kebabBtn(t)}
+                </div>
+            `).join("")}
+        `;
+    } catch (e) {
+        container.innerHTML = `<div class="empty-state">Failed to load playlist</div>`;
+    }
+}
+
+async function playDiscoverAll(key) {
+    const data = discoverCatCache[key];
+    if (!data) return;
+    const ids = [];
+    for (const s of data.sections || []) {
+        for (const p of s.playlists || []) ids.push(p.id);
+    }
+    if (!ids.length) return;
+    const tracks = [];
+    await Promise.all(ids.slice(0, 10).map(async id => {
+        try {
+            const resp = await fetch(`/api/playlist/${id}`);
+            if (!resp.ok) return;
+            const d = await resp.json();
+            for (const t of (d.tracks || [])) {
+                if (tracks.length >= 50) break;
+                tracks.push(t);
+            }
+        } catch (e) {}
+    }));
+    if (!tracks.length) return;
+    queue = tracks.slice(0, 50);
+    queueSource = 'discover';
+    enqueueMixTracks(queue.slice(1));
+    playSong(0);
 }
 
 /* === Home Feed === */

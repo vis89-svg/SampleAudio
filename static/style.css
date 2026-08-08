@@ -542,6 +542,52 @@ header h1 {
     color: #1db954;
 }
 
+.discover-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 14px;
+}
+
+.discover-tile {
+    border-radius: 10px;
+    min-height: 90px;
+    display: flex;
+    align-items: flex-end;
+    padding: 12px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.discover-tile span {
+    font-weight: 700;
+    color: #fff;
+    font-size: 1.05rem;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55);
+    line-height: 1.25;
+}
+
+.discover-tile:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+.discover-card-fallback {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #fff;
+    background: linear-gradient(135deg, #1db954, #11998e);
+    box-sizing: border-box;
+}
+
 @media (max-width: 700px) {
     .artist-banner-content {
         flex-direction: column;

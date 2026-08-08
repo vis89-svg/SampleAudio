@@ -60,6 +60,7 @@
 
         <nav id="mainNav" class="main-nav">
             <button class="nav-btn active" onclick="showHome()">&#127968; Home</button>
+            <button class="nav-btn" onclick="showDiscover()">&#129517; Discover</button>
             <button class="nav-btn" onclick="showSearch()">&#128269; Search</button>
         </nav>
 
@@ -72,6 +73,10 @@
                     <div class="loading">Loading your personalized feed...</div>
                 </div>
                 <div id="mixDetailView" class="mix-detail-view hidden"></div>
+            </div>
+
+            <div id="discoverView" class="home-view hidden">
+                <div id="discoverContent" class="home-content"></div>
             </div>
 
             <div id="searchView" class="search-view hidden">

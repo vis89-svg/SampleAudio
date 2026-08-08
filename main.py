@@ -23,6 +23,7 @@ from api.matcher import match_song
 from api.auth import register_user, authenticate_user, create_token, get_user_profile, get_current_user, get_optional_user
 from api.user_profile import router as user_router
 from api.charts import get_all_charts, get_hot_hits
+from api.discover import get_discover, get_discover_category
 from api.search import (get_artist_page, get_artist_featuring, get_artist_radio,
                         get_playlist as get_playlist_tracks)
 from api.database import init_db
@@ -154,6 +155,22 @@ def api_charts():
 def api_hot_hits():
     try:
         return {"hits": get_hot_hits()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/discover")
+def api_discover():
+    try:
+        return get_discover()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/discover/category/{key}")
+def api_discover_category(key: str):
+    try:
+        return get_discover_category(key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
