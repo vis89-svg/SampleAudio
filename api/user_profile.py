@@ -293,6 +293,26 @@ def genre_charts(user: dict = Depends(get_current_user)):
     return get_user_genre_charts(user["user_id"])
 
 
+@router.get("/top-artists-detailed")
+def top_artists_detailed(limit: int = 6, user: dict = Depends(get_current_user)):
+    """Top artists by songs played in history, with thumbnails for Home."""
+    from api.search import get_artist
+    artists = []
+    for top in get_top_artists(user["user_id"], limit):
+        try:
+            data = get_artist(top["artist_id"], user["user_id"])
+            thumbnail = data.get("thumbnail", "")
+        except Exception:
+            thumbnail = ""
+        artists.append({
+            "artist_id": top["artist_id"],
+            "name": top["artist"],
+            "play_count": top["play_count"],
+            "thumbnail": thumbnail,
+        })
+    return {"artists": artists}
+
+
 @router.get("/suggestions")
 def suggestions(user: dict = Depends(get_current_user)):
     """Generate personalized suggestions based on liked songs and history."""

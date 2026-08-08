@@ -146,36 +146,114 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
     return mixes
 
 
-def generate_discovery_mix(user_id: int) -> dict:
-    """Generate Discovery Mix with more adventurous composition.
+def _get_never_played_tracks(user_id: int, exclude_ids: set, limit: int = 14) -> list[dict]:
+    """Tracks from official genre playlists the user has never played.
 
-    Composition:
-        40% Familiar — anchors from top-scored songs
-        25% Similar session songs — from behaviorally similar sessions
+    Uses the user's detected top genres and gives each genre its own budget
+    so no single playlist can dominate the mix. The most generic hits
+    playlist per genre is skipped — that's the one shown on the Discover
+    genre cards and the Home "Your Genres" cards, so excluding it stops the
+    Discovery Mix from mirroring those sections. Anything in `exclude_ids`
+    (all-time history + likes) is skipped, so the result is genuinely new
+    material — the part that makes Discovery Mix different from the Daily
+    Mixes."""
+    from api.genre_mixes import (
+        detect_user_genres, _get_genre_browse, _pick_playlist, _fetch_playlist_tracks,
+    )
+    genres = detect_user_genres(user_id, limit=3)
+    if not genres:
+        return []
+
+    per_genre = max(2, (limit + len(genres) - 1) // len(genres))
+    seen = set(exclude_ids)
+    pools: list[list[dict]] = []
+
+    for genre in genres:
+        try:
+            playlists, _ = _get_genre_browse(genre)
+        except Exception:
+            continue
+        if not playlists:
+            continue
+        preferred = _pick_playlist(playlists, genre)
+        ranked = sorted(playlists, key=lambda p: p["browse_id"] != preferred)
+        candidates = ranked[1:4] if len(ranked) > 1 else ranked
+        pool = []
+        for playlist in candidates:
+            for t in _fetch_playlist_tracks(playlist["browse_id"]):
+                vid = t.get("id", "")
+                if vid and vid not in seen:
+                    seen.add(vid)
+                    pool.append({
+                        "video_id": vid,
+                        "title": t.get("title", ""),
+                        "artist": t.get("artist", ""),
+                        "artist_id": t.get("artist_id", ""),
+                        "album": t.get("album", ""),
+                        "album_id": t.get("album_id", ""),
+                        "duration": t.get("duration", ""),
+                        "duration_seconds": t.get("duration_seconds", 0),
+                        "thumbnail": t.get("thumbnail", ""),
+                        "score": 0,
+                    })
+                    if len(pool) >= per_genre:
+                        break
+            if len(pool) >= per_genre:
+                break
+        if pool:
+            pools.append(pool)
+
+    # round-robin across genres so the mix feels mixed, not clustered
+    out = []
+    while len(out) < limit and any(pool for pool in pools):
+        for pool in pools:
+            if pool and len(out) < limit:
+                out.append(pool.pop(0))
+    return out
+
+
+def generate_discovery_mix(user_id: int) -> dict:
+    """Generate Discovery Mix — genre-playlist exploration with familiar anchors.
+
+    Composition (v2.1):
+        56% Never played — official playlists for the user's detected genres,
+             minus everything already in history/likes (what makes this mix
+             different from the Daily Mixes)
+        24% Familiar — top-scored songs as anchors
         20% Related artists — affinity expansion
-        10% Taste-trending — popular within user's taste
-         5% Wildcards — exploration outside comfort zone
+
+    Falls back to the v2.0 composition when no genre playlists resolve.
     """
     scored_songs = get_scored_songs(user_id)
     clusters = cluster_sessions(user_id)
     recently_played_ids = {s["video_id"] for s in get_recently_played(user_id, limit=50)}
+    liked_ids = {s["video_id"] for s in get_liked_songs(user_id)}
+    exclude_ids = ({s["video_id"] for s in scored_songs if s.get("video_id")}
+                   | liked_ids)
 
     scored_by_artist = _index_songs_by_artist(scored_songs)
     all_cluster_artists = []
     for c in clusters:
         all_cluster_artists.extend(c.get("centroid", {}).get("top_artists", []))
 
-    familiar = _get_familiar_tracks(all_cluster_artists[:10], scored_by_artist, recently_played_ids, limit=18)
-    related = _get_related_tracks(user_id, all_cluster_artists[:10], recently_played_ids, limit=10,
+    familiar = _get_familiar_tracks(all_cluster_artists[:10], scored_by_artist,
+                                    recently_played_ids, limit=6)
+    related = _get_related_tracks(user_id, all_cluster_artists[:10],
+                                  recently_played_ids, limit=5,
                                   scored_by_artist=scored_by_artist)
+    fresh = _get_never_played_tracks(user_id, exclude_ids, limit=14)
 
-    tracks = _deduplicate_tracks(familiar + related)
-    tracks = tracks[:MIX_SIZE]
+    if fresh:
+        tracks = _deduplicate_tracks(fresh + familiar + related)
+        engine = "v2.1"
+    else:
+        tracks = _deduplicate_tracks(familiar + related)
+        engine = "v2.0"
 
     return {
         "name": "Discovery Mix",
-        "tracks": [_format_track(t) for t in tracks],
-        "engine_version": "v2.0",
+        "tracks": [_format_track(t) for t in tracks[:MIX_SIZE]],
+        "engine_version": engine,
     }
 
 

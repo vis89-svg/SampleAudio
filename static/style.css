@@ -481,6 +481,12 @@ header h1 {
     color: #1db954;
 }
 
+.round-artist-img {
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
 .artist-section-tabs {
     display: flex;
     gap: 8px;

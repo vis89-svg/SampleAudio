@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from api.search import search_songs, search_artists, search_albums, search_all
 from api.search import get_artist, get_album, get_song_details, get_recommendations
@@ -48,6 +49,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    """Stop browsers from caching responses: API responses are no-store (GET
+    caching made the Discover page show stale content) and static HTML/JS/CSS
+    is no-cache so new frontend versions always ship."""
+
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        elif path.endswith((".html", ".js", ".css")):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.add_middleware(NoCacheMiddleware)
 
 
 @app.get("/api/search")

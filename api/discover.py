@@ -2,11 +2,19 @@
 
 Sources: YTM's "Moods & Genres" category index (get_mood_categories) plus one
 raw browse per category page (same walk used for genre detection). All general
-(not personalized) content, cached for 12h.
+(not personalized) content.
+
+YTM rotates the order/content of category pages on every fetch, so category
+pages are cached twice: in-memory for 12h and persisted to disk
+(cache/discover) for 7 days. The disk copy survives restarts, keeping the
+page stable (e.g. Pop keeps its locked first fetch) instead of reshuffling
+each time the server starts.
 
 Regional category pages get a pinned "Hot Hits" card when a matching
 Hot Hits playlist exists (Bollywood / Tamil / Malayalam).
 """
+import json
+import os
 import threading
 import time
 
@@ -15,6 +23,12 @@ from api.charts import HOT_HITS_PLAYLISTS
 
 INDEX_CACHE_TTL = 12 * 3600
 CATEGORY_CACHE_TTL = 12 * 3600
+DISK_CACHE_TTL = 7 * 24 * 3600  # keep category pages stable across restarts
+
+DISK_CACHE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "cache", "discover",
+)
 
 # YTM "Genres" entries that are actually languages/regional categories
 REGIONAL_TITLES = {
@@ -40,6 +54,22 @@ _HOT_HITS_BY_REGION = {
     "malayalam": "malayalam",
     "telugu": "telugu",
 }
+
+# YTM rotates playlist order on category pages on every fetch; the Pop page
+# pins this playlist first so its first card never changes. "Pop's Biggest
+# Hits" is the card whose songs start with Taylor Swift's "Cruel Summer".
+POP_PINNED_FIRST = "Pop's Biggest Hits"
+
+
+def _pin_first(sections: list[dict], title: str) -> None:
+    """Move the playlist `title` to the front of the section that holds it."""
+    for section in sections:
+        playlists = section.get("playlists") or []
+        for i, p in enumerate(playlists):
+            if p.get("title") == title:
+                if i != 0:
+                    playlists.insert(0, playlists.pop(i))
+                return
 
 _index_cache: dict[str, tuple[float, dict]] = {}
 _index_lock = threading.Lock()
@@ -173,12 +203,48 @@ def _walk_sections(resp) -> list[dict]:
     return sections
 
 
+def _disk_path(key: str) -> str:
+    safe = "".join(c for c in key if c.isalnum() or c in "-_")
+    return os.path.join(DISK_CACHE_DIR, f"{safe}.json")
+
+
+def _save_disk_cache(key: str, result: dict) -> None:
+    try:
+        os.makedirs(DISK_CACHE_DIR, exist_ok=True)
+        with open(_disk_path(key), "w", encoding="utf-8") as f:
+            json.dump({"fetched_at": time.time(), "result": result}, f)
+    except Exception:
+        pass
+
+
+def _load_disk_cache(key: str) -> dict | None:
+    try:
+        with open(_disk_path(key), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if time.time() - data.get("fetched_at", 0) < DISK_CACHE_TTL:
+            return data.get("result")
+    except Exception:
+        pass
+    return None
+
+
 def get_discover_category(key: str) -> dict:
-    """One category page: name + sections of playlists."""
+    """One category page: name + sections of playlists.
+
+    Memory cache (12h) -> disk cache (7 days) -> fresh YTM fetch. Every fresh
+    fetch is persisted to disk so server restarts never reshuffle the page."""
     with _cat_lock:
         cached = _cat_cache.get(key)
         if cached and time.time() - cached[0] < CATEGORY_CACHE_TTL:
+            if key == "pop":
+                _pin_first(cached[1]["sections"], POP_PINNED_FIRST)
             return cached[1]
+        disk = _load_disk_cache(key)
+        if disk is not None:
+            if key == "pop":
+                _pin_first(disk["sections"], POP_PINNED_FIRST)
+            _cat_cache[key] = (time.time(), disk)
+            return disk
 
     index = _get_index()
     info = index.get(key)
@@ -195,6 +261,9 @@ def get_discover_category(key: str) -> dict:
         sections = _walk_sections(resp)
     except Exception:
         sections = []
+
+    if key == "pop":
+        _pin_first(sections, POP_PINNED_FIRST)
 
     # Pin the matching Hot Hits playlist at the top of regional pages
     hh_key = _HOT_HITS_BY_REGION.get(key)
@@ -214,4 +283,5 @@ def get_discover_category(key: str) -> dict:
     result = {"key": key, "name": info["title"], "sections": sections}
     with _cat_lock:
         _cat_cache[key] = (time.time(), result)
+    _save_disk_cache(key, result)
     return result

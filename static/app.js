@@ -119,7 +119,7 @@ let playHistory = [];
 let historyNavigating = false;
 let songCompleted = false;
 let songStartTime = 0;
-let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [], chartsAndHits: [], genres: [], genrePersonalized: false };
+let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [], chartsAndHits: [], genres: [], genrePersonalized: false, topArtists: [] };
 let homeFeedExpanded = new Set();
 const ALBUM_LIMIT = 6;
 const ARTIST_LIMIT = 6;
@@ -2086,7 +2086,7 @@ async function loadHomeFeed() {
 }
 
 async function fetchHomeFeed() {
-    const [recent, dailyMixes, discovery, becauseLiked, albums, artists, charts, hotHits, genres] = await Promise.all([
+    const [recent, dailyMixes, discovery, becauseLiked, albums, artists, charts, hotHits, genres, topArtists] = await Promise.all([
         authFetch("/api/user/recently-played").then(r => r.ok ? r.json() : {tracks: []}),
         authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
         authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
@@ -2096,6 +2096,7 @@ async function fetchHomeFeed() {
         authFetch("/api/charts").then(r => r.ok ? r.json() : {charts: []}),
         authFetch("/api/hot-hits").then(r => r.ok ? r.json() : {hits: []}),
         authFetch("/api/user/mixes/genre-charts").then(r => r.ok ? r.json() : {genres: []}),
+        authFetch("/api/user/top-artists-detailed").then(r => r.ok ? r.json() : {artists: []}),
     ]);
 
     homeFeedData.recent = (recent.tracks || []).map(t => ({ ...t, id: t.id || t.video_id }));
@@ -2114,6 +2115,7 @@ async function fetchHomeFeed() {
     homeFeedData.chartsAndHits = [...merged, ...Object.values(mergedByKey)];
     homeFeedData.genres = genres.genres || [];
     homeFeedData.genrePersonalized = !!genres.personalized;
+    homeFeedData.topArtists = topArtists.artists || [];
     homeFeedExpanded.clear();
 
     let html = "";
@@ -2124,6 +2126,14 @@ async function fetchHomeFeed() {
 
     if (homeFeedData.chartsAndHits.length) {
         html += renderChartsHitsSection(false);
+    }
+
+    if (homeFeedData.topArtists.length) {
+        html += renderTopArtistsSection(false);
+    }
+
+    if (homeFeedData.topArtists.length) {
+        html += renderArtistRadioSection(false);
     }
 
     if (homeFeedData.mixes.length) {
@@ -2227,6 +2237,8 @@ function sectionHTML(key) {
         case "because": return renderBecauseYouLikedSection(expanded);
         case "albums": return renderAlbumSuggestionsSection(expanded);
         case "artists": return renderNewArtistsSection(expanded);
+        case "top_artists": return renderTopArtistsSection(expanded);
+        case "artist_radio": return renderArtistRadioSection(expanded);
     }
     return "";
 }
@@ -2250,6 +2262,64 @@ function renderRecentlyPlayedSection(expanded) {
     });
     html += `</div></div>`;
     return html;
+}
+
+function renderTopArtistsSection(expanded) {
+    const artists = homeFeedData.topArtists;
+    if (!artists.length) return "";
+    const shown = expanded ? artists : artists.slice(0, 6);
+    let html = `<div class="home-section" id="sec_top_artists">
+        ${sectionHeader("&#11088; Top Artists", "Your most played artists", "top_artists", expanded)}
+        <div class="suggestion-grid">`;
+    shown.forEach(a => {
+        html += `
+            <div class="suggestion-card" onclick="openArtist('${a.artist_id}')">
+                <img class="round-artist-img" src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <div class="card-title">${esc(a.name || "")}</div>
+                <div class="card-subtitle">${a.play_count} songs played</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+function renderArtistRadioSection(expanded) {
+    const artists = homeFeedData.topArtists;
+    if (!artists.length) return "";
+    const shown = expanded ? artists : artists.slice(0, 6);
+    let html = `<div class="home-section" id="sec_artist_radio">
+        ${sectionHeader("&#128250; Artist Radio", "Start a station from your top artists", "artist_radio", expanded)}
+        <div class="mix-grid">`;
+    shown.forEach((a, i) => {
+        html += `
+            <div class="mix-card" onclick="playArtistRadioCard(${i})">
+                <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <button class="mix-play-btn" onclick="event.stopPropagation(); playArtistRadioCard(${i})">&#9658;</button>
+                <div class="mix-title">${esc(a.name || "")}</div>
+                <div class="mix-subtitle">Artist Radio &middot; ${a.play_count} songs played</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
+}
+
+async function playArtistRadioCard(i) {
+    const a = homeFeedData.topArtists[i];
+    if (!a) return;
+    showCleanNoInfo(`Starting ${a.name || "artist"} radio...`);
+    try {
+        const resp = await authFetch(`/api/artist/${a.artist_id}/radio`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const tracks = data.tracks || [];
+        if (!tracks.length) return;
+        queue = tracks;
+        queueSource = 'artist-radio';
+        enqueueMixTracks(queue.slice(1));
+        playSong(0);
+    } catch (e) {
+        showCleanNoInfo("Failed to start radio");
+    }
 }
 
 function renderDailyMixesSection(expanded) {
