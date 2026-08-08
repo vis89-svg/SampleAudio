@@ -117,7 +117,7 @@ let playHistory = [];
 let historyNavigating = false;
 let songCompleted = false;
 let songStartTime = 0;
-let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [] };
+let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [] };
 let homeFeedExpanded = new Set();
 const ALBUM_LIMIT = 6;
 const ARTIST_LIMIT = 6;
@@ -703,7 +703,7 @@ function playSong(index) {
         logPlayCompletion(currentSong, songCompleted, !songCompleted);
         pushToHistory(currentSong);
     }
-    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked') {
+    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits') {
         clearStaleQueueItems();
     }
     audioErrorRetried = false;
@@ -1538,13 +1538,15 @@ async function loadHomeFeed() {
 }
 
 async function fetchHomeFeed() {
-    const [recent, dailyMixes, discovery, becauseLiked, albums, artists] = await Promise.all([
+    const [recent, dailyMixes, discovery, becauseLiked, albums, artists, charts, hotHits] = await Promise.all([
         authFetch("/api/user/recently-played").then(r => r.ok ? r.json() : {tracks: []}),
         authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
         authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
         authFetch("/api/user/mixes/because-you-liked").then(r => r.ok ? r.json() : {suggestions: []}),
         authFetch("/api/user/mixes/albums").then(r => r.ok ? r.json() : {albums: []}),
         authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
+        authFetch("/api/charts").then(r => r.ok ? r.json() : {charts: []}),
+        authFetch("/api/hot-hits").then(r => r.ok ? r.json() : {hits: []}),
     ]);
 
     homeFeedData.recent = (recent.tracks || []).map(t => ({ ...t, id: t.id || t.video_id }));
@@ -1553,16 +1555,26 @@ async function fetchHomeFeed() {
     homeFeedData.because = becauseLiked.suggestions || [];
     homeFeedData.albums = albums.albums || [];
     homeFeedData.artists = artists.artists || [];
+    homeFeedData.charts = charts.charts || [];
+    homeFeedData.hotHits = hotHits.hits || [];
     homeFeedExpanded.clear();
 
     let html = "";
 
-    if (homeFeedData.recent.length) {
-        html += renderRecentlyPlayedSection(false);
+    if (homeFeedData.hotHits.length) {
+        html += renderHotHitsSection(false);
     }
 
     if (homeFeedData.mixes.length) {
         html += renderDailyMixesSection(false);
+    }
+
+    if (homeFeedData.charts.length) {
+        html += renderChartsSection(false);
+    }
+
+    if (homeFeedData.recent.length) {
+        html += renderRecentlyPlayedSection(false);
     }
 
     if (homeFeedData.because.length) {
@@ -1652,6 +1664,8 @@ function sectionHTML(key) {
     switch (key) {
         case "recent": return renderRecentlyPlayedSection(expanded);
         case "daily": return renderDailyMixesSection(expanded);
+        case "hot_hits": return renderHotHitsSection(expanded);
+        case "charts": return renderChartsSection(expanded);
         case "discovery": return renderDiscoveryMixSection(expanded);
         case "because": return renderBecauseYouLikedSection(expanded);
         case "albums": return renderAlbumSuggestionsSection(expanded);
@@ -1726,6 +1740,55 @@ function renderDailyMixesSection(expanded) {
 function mixThumb(mix) {
     const t = (mix.tracks || []).find(x => x && x.thumbnail) || (mix.tracks || [])[0] || {};
     return hiRes(t.thumbnail || "");
+}
+
+function renderHotHitsSection(expanded) {
+    const hits = homeFeedData.hotHits;
+    if (!hits.length) return "";
+    let html = `<div class="home-section" id="sec_hot_hits">${sectionHeader("&#128293; Hot Hits", "", "hot_hits", expanded)}`;
+    if (!expanded) {
+        html += `<div class="mix-grid">`;
+        hits.forEach((c, i) => {
+            html += `
+                <div class="mix-card" onclick="openMixDetail('hot_hits', ${i})">
+                    <img src="${mixThumb(c)}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMixTrack('hot_hits', ${i}, 0)">&#9654;</button>
+                    <div class="mix-title">${esc(c.name)}</div>
+                    <div class="mix-subtitle">${c.tracks.length} tracks</div>
+                </div>`;
+        });
+        html += `</div>`;
+    } else {
+        hits.forEach((c, i) => {
+            html += `<div class="mix-track-section-title">${esc(c.name)} &middot; ${c.tracks.length} tracks</div>`;
+            html += (c.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('hot_hits', ${i}, ${j})`)).join("");
+        });
+    }
+    return html + `</div>`;
+}
+
+function renderChartsSection(expanded) {
+    const charts = homeFeedData.charts;
+    if (!charts.length) return "";
+    let html = `<div class="home-section" id="sec_charts">${sectionHeader("&#127881; Charts", "", "charts", expanded)}`;    if (!expanded) {
+        html += `<div class="mix-grid">`;
+        charts.forEach((c, i) => {
+            html += `
+                <div class="mix-card" onclick="openMixDetail('charts', ${i})">
+                    <img src="${mixThumb(c)}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMixTrack('charts', ${i}, 0)">&#9654;</button>
+                    <div class="mix-title">${esc(c.name)}</div>
+                    <div class="mix-subtitle">${c.tracks.length} tracks</div>
+                </div>`;
+        });
+        html += `</div>`;
+    } else {
+        charts.forEach((c, i) => {
+            html += `<div class="mix-track-section-title">${esc(c.name)} &middot; ${c.tracks.length} tracks</div>`;
+            html += (c.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('charts', ${i}, ${j})`)).join("");
+        });
+    }
+    return html + `</div>`;
 }
 
 function renderDiscoveryMixSection(expanded) {
@@ -1835,10 +1898,16 @@ function playMixTrack(type, mixIndex, trackIndex) {
     } else if (type === 'because') {
         const s = homeFeedData.because[mixIndex];
         if (s) tracks = s.tracks;
+    } else if (type === 'charts') {
+        const c = homeFeedData.charts[mixIndex];
+        if (c) tracks = c.tracks;
+    } else if (type === 'hot_hits') {
+        const c = homeFeedData.hotHits[mixIndex];
+        if (c) tracks = c.tracks;
     }
     if (!tracks || !tracks.length) return;
     queue = tracks;
-    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : 'because-liked');
+    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : type === 'charts' ? 'charts' : type === 'hot_hits' ? 'hot-hits' : 'because-liked');
     enqueueMixTracks(queue.slice(1));
     playSong(trackIndex);
 }
@@ -1864,6 +1933,18 @@ function openMixDetail(type, mixIndex) {
         title = s.seed_title || "Because You Liked";
         subtitle = "Suggested by your likes";
         tracks = s.tracks || [];
+    } else if (type === 'charts') {
+        const c = homeFeedData.charts[mixIndex];
+        if (!c) return;
+        title = c.name || "Charts";
+        subtitle = "YouTube Music Charts";
+        tracks = c.tracks || [];
+    } else if (type === 'hot_hits') {
+        const c = homeFeedData.hotHits[mixIndex];
+        if (!c) return;
+        title = c.name || "Hot Hits";
+        subtitle = "Trending hits, updated regularly";
+        tracks = c.tracks || [];
     }
     if (!tracks.length) return;
 

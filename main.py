@@ -22,6 +22,7 @@ from api.jiosaavn import search_songs as search_saavn_songs
 from api.matcher import match_song
 from api.auth import register_user, authenticate_user, create_token, get_user_profile, get_current_user
 from api.user_profile import router as user_router
+from api.charts import get_all_charts, get_hot_hits
 from api.database import init_db
 from config import (DOWNLOAD_DIR, HOST, PORT, STREAM_POLL_INTERVAL,
                     STREAM_WAIT_TIMEOUT, SPONSORBLOCK_MIN_TOTAL_SKIP,
@@ -102,6 +103,22 @@ def api_recommendations(videoId: str = Query(..., min_length=1),
     try:
         tracks = get_recommendations(videoId, limit)
         return {"tracks": tracks}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/charts")
+def api_charts():
+    try:
+        return {"charts": get_all_charts()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/hot-hits")
+def api_hot_hits():
+    try:
+        return {"hits": get_hot_hits()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
