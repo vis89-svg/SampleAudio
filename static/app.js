@@ -32,6 +32,11 @@ function attachEventListeners() {
     if (audio) {
         audio.addEventListener("ended", () => {
             songCompleted = true;
+            if (repeatMode === "one" && currentSong) {
+                audio.currentTime = 0;
+                audio.play().catch(() => {});
+                return;
+            }
             nextTrack();
         });
 
@@ -49,7 +54,8 @@ function attachEventListeners() {
                 const npTot = document.getElementById("npTotalTime");
                 if (npBar && !scrubbing) npBar.value = pct;
                 if (npCur) npCur.textContent = fmtTime(audio.currentTime);
-                if (npTot) npTot.textContent = fmtTime(d);
+                if (npTot) npTot.textContent = `-${fmtTime(Math.max(0, d - audio.currentTime))}`;
+                syncLyrics();
             }
         });
 
@@ -103,6 +109,12 @@ function attachEventListeners() {
 
 // Cache DOM elements immediately
 cacheDomElements();
+
+let shuffleOn = false;
+let repeatMode = "off"; // "off" | "all" | "one"
+const lyricsCache = {};
+let lyricsLoadedFor = null;
+let lastPlainLine = -1;
 
 let currentTab = "songs";
 let queue = [];
@@ -563,7 +575,7 @@ function renderAlbums(albums) {
         return;
     }
     resultsDiv.innerHTML = albums.map(a => `
-        <div class="album-card" onclick="openAlbum('${a.id}')">
+        <div class="album-card" onclick="openAlbum('${a.id}')" data-album="${esc(a.title || '')}" data-artist="${esc(a.artist || '')}">
             <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
             <div class="title">${esc(a.title)}</div>
             <div class="artist-name">${esc(a.artist)}${a.year ? ' &middot; ' + a.year : ''}</div>
@@ -616,9 +628,9 @@ function artistSongRows(songs, action) {
     `).join("");
 }
 
-function albumGrid(albums) {
+function albumGrid(albums, defaultArtist) {
     return `<div class="results">${(albums || []).map(a => `
-        <div class="album-card" onclick="openAlbum('${a.id}')">
+        <div class="album-card" onclick="openAlbum('${a.id}')" data-album="${esc(a.title || '')}" data-artist="${esc(a.artist || defaultArtist || '')}">
             <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
             <div class="title">${esc(a.title || '')}</div>
             <div class="artist-name">${esc(a.year || '')}</div>
@@ -692,12 +704,12 @@ function renderArtistView() {
         const recent = (d.singles || []).concat(d.albums || [])
             .sort((x, y) => parseInt(y.year || 0, 10) - parseInt(x.year || 0, 10))
             .slice(0, 12);
-        content = `<div class="section-title">Recently Released</div>${albumGrid(recent)}`;
+        content = `<div class="section-title">Recently Released</div>${albumGrid(recent, d.name)}`;
     } else if (artistSection === 'albums') {
         const shown = d.albums || [];
         content = `
             <div class="section-title">Albums</div>
-            ${albumGrid(shown)}
+            ${albumGrid(shown, d.name)}
             ${d.albums_params ? `<button class="see-more-btn" onclick="openArtistAlbumsView()">See More &darr;</button>` : ''}
         `;
     } else if (artistSection === 'playlists') {
@@ -911,7 +923,7 @@ async function openArtistAlbumsView() {
                 <div style="color:#888;margin-top:4px">${esc(artistData.name)} &middot; ${albums.length} releases</div>
             </div>
         </div>
-        ${albumGrid(albums)}
+        ${albumGrid(albums, artistData.name)}
     `;
 }
 
@@ -1016,7 +1028,9 @@ async function openAlbum(browseId) {
         albumView.innerHTML = `
             <button class="back-btn" onclick="backToResults()">&larr; Back</button>
             <div class="artist-header">
-                <img src="${data.thumbnail || ''}" alt="" style="border-radius:8px" onerror="this.style.background='#333'">
+                <div class="artwrap album-header-art">
+                    <img src="${data.thumbnail || ''}" alt="" style="border-radius:8px" onerror="this.style.background='#333'">
+                </div>
                 <div>
                     <h2>${esc(data.title)}</h2>
                     <div style="color:#888;margin-top:4px">${esc(data.artist)}${data.year ? ' &middot; ' + data.year : ''}</div>
@@ -1035,6 +1049,7 @@ async function openAlbum(browseId) {
                 </div>
             `).join("")}
         `;
+        applyMotionArt(albumView.querySelector(".album-header-art"), data.title, data.artist, "", { autoplay: true, observe: false });
     } catch (err) {
         albumView.innerHTML = `<div class="empty-state">Failed to load album</div>`;
     }
@@ -1340,6 +1355,7 @@ function updateLikeButton() {
         btn.innerHTML = "&#9829; Like";
         btn.classList.remove("liked");
     }
+    updateNpLike();
 }
 
 function showCleanNote(msg) {
@@ -1423,10 +1439,16 @@ function nextTrack() {
             playRecommendation(0);
         }
     } else {
-        if (recommendations.length > 0) {
+        if (shuffleOn && queue.length > 1) {
+            let idx = queueIndex;
+            while (idx === queueIndex) idx = Math.floor(Math.random() * queue.length);
+            playSong(idx);
+        } else if (recommendations.length > 0) {
             playRecommendation(0);
         } else if (queueIndex < queue.length - 1) {
             playSong(queueIndex + 1);
+        } else if (repeatMode === "all" && queue.length > 0) {
+            playSong(0);
         }
     }
 }
@@ -1673,15 +1695,283 @@ function openNowPlaying() {
     document.getElementById("npAlbum").textContent = currentSong.album || '';
     document.getElementById("npArtist").style.pointerEvents = currentSong.artist_id ? "cursor" : "default";
     document.getElementById("npAlbum").style.pointerEvents = currentSong.album_id ? "cursor" : "default";
+    const bg = document.getElementById("npBg");
+    bg.style.backgroundImage = currentSong.thumbnail
+        ? `linear-gradient(rgba(10,10,14,0.65), rgba(10,10,14,0.92)), url('${currentSong.thumbnail.replace(/['()\\]/g, "")}')`
+        : '';
+    const npWrap = document.querySelector(".np-artwrap");
+    if (npWrap) {
+        npWrap.querySelectorAll("video.motion-vid").forEach(v => { v.pause(); v.remove(); });
+        npWrap.classList.remove("has-motion");
+    }
+    if (currentSong.album || currentSong.artist) {
+        loadMotionArt(currentSong.album, currentSong.artist, currentSong.title);
+    }
+    const d = audioDuration();
+    if (d > 0) {
+        document.getElementById("npTotalTime").textContent = `-${fmtTime(Math.max(0, d - audio.currentTime))}`;
+        if (!scrubbing) document.getElementById("npProgressBar").value = (audio.currentTime / d) * 100;
+    }
+    const vol = document.getElementById("npVolumeBar");
+    if (vol) vol.value = Math.round(audio.volume * 100);
+    updateNpToggles();
+    updateNpLike();
     overlay.classList.remove("hidden");
+    loadLyrics(currentSong.id);
 }
 
 function closeNowPlaying() {
     const overlay = document.getElementById("nowPlayingOverlay");
     if (overlay) overlay.classList.add("hidden");
+    const bg = document.getElementById("npBg");
+    if (bg) bg.style.backgroundImage = '';
 }
 
-document.getElementById("playerAlbumName").addEventListener("click", () => {
+function toggleShuffle() {
+    shuffleOn = !shuffleOn;
+    updateNpToggles();
+    showCleanNote(shuffleOn ? "Shuffle On" : "Shuffle Off");
+}
+
+function toggleRepeat() {
+    repeatMode = repeatMode === "off" ? "all" : (repeatMode === "all" ? "one" : "off");
+    updateNpToggles();
+    showCleanNote(repeatMode === "one" ? "Repeat One" : (repeatMode === "all" ? "Repeat All" : "Repeat Off"));
+}
+
+function updateNpToggles() {
+    const sh = document.getElementById("npShuffleBtn");
+    if (sh) {
+        sh.classList.toggle("active", shuffleOn);
+        sh.title = shuffleOn ? "Shuffle On" : "Shuffle";
+    }
+    const rep = document.getElementById("npRepeatBtn");
+    if (rep) {
+        rep.classList.toggle("active", repeatMode !== "off");
+        rep.classList.toggle("repeat-one", repeatMode === "one");
+        rep.title = repeatMode === "one" ? "Repeat One" : (repeatMode === "all" ? "Repeat All" : "Repeat");
+    }
+}
+
+function updateNpLike() {
+    const btn = document.getElementById("npLikeBtn");
+    if (!btn) return;
+    const liked = currentSong && likedSongIds.has(currentSong.id);
+    btn.classList.toggle("active", !!liked);
+    btn.title = liked ? "Unlike" : "Like";
+}
+
+async function loadLyrics(videoId) {
+    const body = document.getElementById("npLyricsBody");
+    if (!body || !videoId) return;
+    if (lyricsLoadedFor === videoId && body.dataset.state === "ready") return;
+    lyricsLoadedFor = videoId;
+    lastPlainLine = -1;
+    body.dataset.state = "loading";
+    body.innerHTML = '<div class="np-lyrics-loading">Loading lyrics&hellip;</div>';
+    let data = lyricsCache[videoId];
+    if (!data) {
+        try {
+            const q = new URLSearchParams();
+            if (currentSong && currentSong.id === videoId) {
+                if (currentSong.title) q.set("title", currentSong.title);
+                if (currentSong.artist) q.set("artist", currentSong.artist);
+                if (currentSong.album) q.set("album", currentSong.album);
+                if (currentSong.duration_seconds) q.set("duration", currentSong.duration_seconds);
+            }
+            const resp = await fetch(`/api/song/${encodeURIComponent(videoId)}/lyrics?${q.toString()}`);
+            data = await resp.json();
+            lyricsCache[videoId] = data;
+        } catch (err) {
+            data = null;
+        }
+    }
+    if (!data || !((data.timed && data.timed.length) || (data.plain && data.plain.length))) {
+        body.dataset.state = "empty";
+        body.innerHTML = '<div class="np-lyrics-empty">Lyrics not available for this song</div>';
+        return;
+    }
+    body.dataset.state = "ready";
+    if (data.timed && data.timed.length) {
+        body.dataset.mode = "timed";
+        body.innerHTML = data.timed.map((l, i) =>
+            `<div class="np-lyric-line" data-line="${i}" data-time="${l.time}" onclick="seekLyricLine(${i})">${esc(l.text)}</div>`
+        ).join("");
+    } else {
+        body.dataset.mode = "plain";
+        body.innerHTML = data.plain.map(l => `<div class="np-lyric-line plain">${esc(l)}</div>`).join("");
+    }
+    syncLyrics();
+}
+
+function seekLyricLine(i) {
+    const body = document.getElementById("npLyricsBody");
+    const lines = body ? body.querySelectorAll(".np-lyric-line") : [];
+    if (!lines[i]) return;
+    const t = parseFloat(lines[i].dataset.time);
+    if (!isNaN(t) && t >= 0) {
+        audio.currentTime = t;
+        audio.play().catch(() => {});
+    }
+}
+
+function syncLyrics() {
+    const body = document.getElementById("npLyricsBody");
+    if (!body || body.dataset.state !== "ready" || scrubbing) return;
+    const lines = body.querySelectorAll(".np-lyric-line");
+    if (!lines.length) return;
+    const t = audio.currentTime;
+    if (body.dataset.mode === "timed") {
+        let active = 0;
+        for (let i = 0; i < lines.length; i++) {
+            if (parseFloat(lines[i].dataset.time) <= t) active = i;
+            else break;
+        }
+        for (let i = 0; i < lines.length; i++) {
+            if (i === active) {
+                if (!lines[i].classList.contains("active")) {
+                    lines[i].classList.add("active");
+                    lines[i].scrollIntoView({ block: "center", behavior: "smooth" });
+                }
+            } else {
+                lines[i].classList.remove("active");
+            }
+        }
+    } else {
+        const d = audioDuration();
+        if (d <= 0) return;
+        const target = Math.min(lines.length - 1, Math.max(0, Math.floor((t / d) * lines.length)));
+        if (target !== lastPlainLine) {
+            lastPlainLine = target;
+            lines[target].scrollIntoView({ block: "center", behavior: "smooth" });
+        }
+    }
+}
+
+/* === Apple Motion Album Artwork === */
+const motionArtCache = {};
+let motionObserver = null;
+
+function getMotionObserver() {
+    if (!motionObserver) {
+        motionObserver = new IntersectionObserver((entries) => {
+            for (const e of entries) {
+                if (e.isIntersecting) e.target.play().catch(() => {});
+                else e.target.pause();
+            }
+        }, { threshold: 0.2 });
+    }
+    return motionObserver;
+}
+
+function loadHlsJs() {
+    if (window.Hls) return Promise.resolve();
+    if (loadHlsJs._p) return loadHlsJs._p;
+    loadHlsJs._p = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error("hls.js failed to load"));
+        document.head.appendChild(s);
+    });
+    return loadHlsJs._p;
+}
+
+function motionUrlFor(album, artist, title) {
+    const key = `${artist || ''}|${album || ''}`;
+    if (!(key in motionArtCache)) {
+        motionArtCache[key] = (async () => {
+            try {
+                const q = new URLSearchParams();
+                if (album) q.set("album", album);
+                if (artist) q.set("artist", artist);
+                if (title) q.set("title", title);
+                const resp = await fetch(`/api/song/0/motion-art?${q.toString()}`);
+                const data = await resp.json();
+                return data.url || null;
+            } catch (err) {
+                return null;
+            }
+        })();
+    }
+    return motionArtCache[key];
+}
+
+function attachMotionVideo(container, url, opts) {
+    let vid = container.querySelector("video.motion-vid");
+    if (vid) vid.remove();
+    vid = document.createElement("video");
+    vid.className = "motion-vid";
+    vid.muted = true;
+    vid.loop = true;
+    vid.playsInline = true;
+    vid.preload = "metadata";
+    container.appendChild(vid);
+    container.classList.add("has-motion");
+
+    const fail = () => {
+        container.classList.remove("has-motion");
+        vid.remove();
+    };
+    const play = () => vid.play().catch(() => {});
+    const start = () => {
+        if (window.Hls && window.Hls.isSupported()) {
+            const hls = new window.Hls({ enableWorker: true });
+            hls.loadSource(url);
+            hls.attachMedia(vid);
+            hls.on(window.Hls.Events.ERROR, (e, d) => {
+                if (d && d.fatal) fail();
+            });
+        } else if (vid.canPlayType("application/vnd.apple.mpegurl")) {
+            vid.src = url;
+        } else {
+            fail();
+            return;
+        }
+        if (opts.autoplay) play();
+        if (opts.observe) getMotionObserver().observe(vid);
+    };
+    loadHlsJs().then(start).catch(fail);
+    return vid;
+}
+
+async function applyMotionArt(container, album, artist, title, opts) {
+    if (!container || !album) return;
+    const url = await motionUrlFor(album, artist, title);
+    if (!url) return;
+    attachMotionVideo(container, url, opts);
+}
+
+async function loadMotionArt(album, artist, title) {
+    const wrap = document.querySelector(".np-artwrap");
+    if (!wrap || !album) return;
+    applyMotionArt(wrap, album, artist, title, { autoplay: true, observe: false });
+}
+
+function initMotionCards(root) {
+    const cards = (root || document).querySelectorAll(
+        ".album-card[data-album]:not([data-motion-done]), .suggestion-card[data-album]:not([data-motion-done])");
+    cards.forEach(card => {
+        card.dataset.motionDone = "1";
+        if (!card.querySelector("img")) return;
+        applyMotionArt(card, card.dataset.album, card.dataset.artist || "", "", {
+            autoplay: false, observe: true,
+        });
+    });
+}
+
+let motionInitTimer = null;
+function setupMotionObserver() {
+    new MutationObserver(() => {
+        clearTimeout(motionInitTimer);
+        motionInitTimer = setTimeout(() => initMotionCards(document), 400);
+    }).observe(document.body, { childList: true, subtree: true });
+    initMotionCards(document);
+}
+setupMotionObserver();
+
+document.getElementById("playerAlbumName").addEventListener("click", (e) => {
+    e.stopPropagation();
     if (currentSong && currentSong.album_id) {
         openNowPlaying();
     }
@@ -1796,6 +2086,8 @@ function skipBackward() {
 
 function setVolume(pct) {
     audio.volume = pct / 100;
+    const npVol = document.getElementById("npVolumeBar");
+    if (npVol && npVol.value !== String(pct)) npVol.value = pct;
 }
 
 audio.volume = 0.8;
@@ -2484,7 +2776,7 @@ function renderAlbumSuggestionsSection(expanded) {
     let html = `<div class="home-section" id="sec_albums">${sectionHeader("&#128193; Albums For You", "", "albums", expanded)}<div class="suggestion-grid">`;
     shown.forEach(a => {
         html += `
-            <div class="suggestion-card" onclick="openAlbum('${a.album_id}')">
+            <div class="suggestion-card" onclick="openAlbum('${a.album_id}')" data-album="${esc(a.album || '')}" data-artist="${esc(a.artist || '')}">
                 <img src="${a.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
                 <div class="card-title">${esc(a.album)}</div>
                 <div class="card-subtitle">${esc(a.artist)}</div>

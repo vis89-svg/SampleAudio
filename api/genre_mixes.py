@@ -45,6 +45,11 @@ MOOD_PLAYLISTS = [
      "playlist_id": "VLRDCLAK5uy_nDL8KeBrUagwyISwNmyEiSfYgz1gVCesg"},
 ]
 
+# Official YTM editorial Pop playlist (50 songs, refreshed ~every 12h).
+# Pinned so the Pop genre card shows the global editorial hotlist instead of
+# the regional "hits" playlist that the genre-browse pick can land on.
+POP_HOTLIST_ID = "VLRDCLAK5uy_npj3EI5VV_uv_GdeeNgVpsGe5n_9YwzoI"
+
 BROWSE_CACHE_TTL = 12 * 3600  # genre category pages are stable
 USER_CACHE_TTL = 6 * 3600     # re-detect genres a few times a day
 
@@ -182,6 +187,15 @@ def get_user_genre_charts(user_id: int) -> dict:
 
     if genres:
         for genre in genres:
+            if genre.lower() == "pop":
+                tracks = _fetch_playlist_tracks(POP_HOTLIST_ID)
+                if tracks:
+                    result["genres"].append({
+                        "key": "pop",
+                        "name": genre,
+                        "tracks": tracks[:100],
+                    })
+                    continue
             try:
                 playlists, _ = _get_genre_browse(genre)
             except Exception:

@@ -583,6 +583,21 @@ def api_thumbnail(media_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/song/{video_id}/lyrics")
+def api_song_lyrics(video_id: str, title: str = "", artist: str = "",
+                    album: str = "", duration: float = 0):
+    from api.search import get_song_lyrics
+    return get_song_lyrics(video_id, title=title, artist=artist,
+                           album=album, duration=duration)
+
+
+@app.get("/api/song/{video_id}/motion-art")
+def api_song_motion_art(video_id: str, artist: str = "", album: str = "",
+                        title: str = ""):
+    from api.search import get_motion_art
+    return get_motion_art(artist, album, title)
+
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":

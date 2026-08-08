@@ -1,6 +1,10 @@
 """YouTube Music search via ytmusicapi"""
+import json
+import re
 import time
 import threading
+import urllib.parse
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 from ytmusicapi import YTMusic
@@ -692,3 +696,195 @@ def get_album(browse_id: str) -> dict:
         "thumbnail": album_thumb,
         "tracks": tracks,
     }
+
+
+_LYRICS_RE = re.compile(r"\[(\d+):(\d+(?:\.\d+)?)\]")
+
+_lyrics_cache: dict[str, tuple[float, dict]] = {}
+_lyrics_lock = threading.Lock()
+LYRICS_CACHE_TTL = 24 * 3600
+
+
+def _find_lyrics_browse_id(payload) -> str:
+    """Walk a `next` response looking for a lyrics (MPLY*) browse id."""
+    found: str | None = None
+
+    def walk(obj):
+        nonlocal found
+        if found:
+            return
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k == "browseId" and isinstance(v, str) and v.startswith("MPLY"):
+                    found = v
+                    return
+                walk(v)
+                if found:
+                    return
+        elif isinstance(obj, list):
+            for item in obj:
+                walk(item)
+                if found:
+                    return
+
+    walk(payload)
+    return found or ""
+
+
+def _parse_timed_lyrics(text: str) -> list[dict]:
+    """Parse LRC-style timestamped lines into [{time, text}]."""
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        tags = _LYRICS_RE.findall(line)
+        if not tags:
+            continue
+        content = _LYRICS_RE.sub("", line).strip()
+        for minutes, seconds in tags:
+            try:
+                t = int(minutes) * 60 + float(seconds)
+            except ValueError:
+                continue
+            lines.append({"time": round(t, 2), "text": content})
+    lines.sort(key=lambda l: l["time"])
+    return lines
+
+
+def _lrclib_get(artist: str, title: str, album: str, duration: float) -> dict | None:
+    """Fetch LRC lyrics from lrclib.net (free, no key). Returns raw JSON or None."""
+    url = "https://lrclib.net/api/get?" + urllib.parse.urlencode({
+        "artist_name": artist or "",
+        "track_name": title or "",
+        "album_name": album or "",
+        "duration": int(duration or 0),
+    })
+    req = urllib.request.Request(url, headers={"User-Agent": "SampleAudio/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def get_song_lyrics(video_id: str, title: str = "", artist: str = "",
+                    album: str = "", duration: float = 0) -> dict:
+    """Lyrics for a song, cached 24h.
+
+    Returns {"timed": [{"time", "text"}], "plain": [str], "has_timed": bool,
+    "source": str}. `timed` is populated when YTM provides karaoke
+    (timestamped) lyrics; otherwise `plain` holds the text lines. When YTM has
+    no timed lyrics, falls back to lrclib.net synced lyrics (best-effort).
+    """
+    with _lyrics_lock:
+        cached = _lyrics_cache.get(video_id)
+        if cached and time.time() - cached[0] < LYRICS_CACHE_TTL:
+            return cached[1]
+
+    result = {"timed": [], "plain": [], "has_timed": False, "source": ""}
+    try:
+        yt = _get_ytmusic()
+        resp = yt._send_request("next", {"videoId": video_id})
+        browse_id = _find_lyrics_browse_id(resp)
+        if browse_id:
+            lyrics = yt.get_lyrics(browse_id)
+            text = lyrics.get("lyrics", "") or ""
+            result["source"] = lyrics.get("source", "")
+            if lyrics.get("hasTimestamps"):
+                timed = _parse_timed_lyrics(text)
+                if timed:
+                    result["timed"] = timed
+                    result["has_timed"] = True
+            if not result["timed"]:
+                result["plain"] = [ln for ln in text.splitlines() if ln.strip()]
+    except Exception:
+        pass
+
+    if not result["timed"]:
+        try:
+            lr = _lrclib_get(artist, title, album, duration)
+            synced = (lr or {}).get("syncedLyrics") or ""
+            timed = _parse_timed_lyrics(synced)
+            if timed:
+                result["timed"] = timed
+                result["has_timed"] = True
+                result["source"] = "lrclib"
+            else:
+                plain = (lr or {}).get("plainLyrics") or ""
+                if plain.strip() and not result["plain"]:
+                    result["plain"] = [ln for ln in plain.splitlines() if ln.strip()]
+                    result["source"] = "lrclib"
+        except Exception:
+            pass
+
+    with _lyrics_lock:
+        _lyrics_cache[video_id] = (time.time(), result)
+    return result
+
+
+_motion_cache: dict[str, tuple[float, dict]] = {}
+_motion_lock = threading.Lock()
+MOTION_CACHE_TTL = 7 * 24 * 3600
+
+
+def _itunes_search(term: str) -> dict | None:
+    """Find the Apple Music album for a search term via the iTunes Search API."""
+    url = "https://itunes.apple.com/search?" + urllib.parse.urlencode({
+        "term": term, "media": "music", "entity": "song", "limit": 5,
+    })
+    req = urllib.request.Request(url, headers={"User-Agent": "SampleAudio/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read())
+    results = data.get("results") or []
+    if not results:
+        return None
+    r = results[0]
+    return {
+        "collection_id": r.get("collectionId"),
+        "collection_name": r.get("collectionName", ""),
+        "track_name": r.get("trackName", ""),
+        "artist_name": r.get("artistName", ""),
+    }
+
+
+def _m8tec_search(artist: str, album: str) -> dict | None:
+    """Look up Apple motion artwork via the community m8tec artwork API."""
+    url = "https://artwork.m8tec.top/api/v1/artwork/search?" + urllib.parse.urlencode({
+        "artist": artist or "", "album": album or "",
+    })
+    req = urllib.request.Request(url, headers={"User-Agent": "SampleAudio/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
+
+def get_motion_art(artist: str, album: str, title: str = "") -> dict:
+    """Find Apple Music motion album artwork (HLS m3u8) for an album, cached 7d.
+
+    Returns {"url": m3u8 or None, "url_tall": m3u8 or None}. Best-effort:
+    on any failure returns url=None and the frontend keeps the static art.
+    """
+    cache_key = f"{artist or ''}|{album or ''}".strip("|")
+    if not cache_key:
+        return {"url": None, "url_tall": None}
+    with _motion_lock:
+        cached = _motion_cache.get(cache_key)
+        if cached and time.time() - cached[0] < MOTION_CACHE_TTL:
+            return cached[1]
+
+    result = {"url": None, "url_tall": None}
+    try:
+        am = _m8tec_search(artist, album)
+        if isinstance(am, dict) and am.get("url"):
+            result["url"] = am["url"]
+            result["url_tall"] = am.get("url_tall")
+        else:
+            found = _itunes_search(f"{artist} {title or album}")
+            if found and found["collection_id"]:
+                am2 = _m8tec_search(found["artist_name"], found["collection_name"])
+                if isinstance(am2, dict) and am2.get("url"):
+                    result["url"] = am2["url"]
+                    result["url_tall"] = am2.get("url_tall")
+    except Exception:
+        pass
+
+    with _motion_lock:
+        _motion_cache[cache_key] = (time.time(), result)
+    return result
