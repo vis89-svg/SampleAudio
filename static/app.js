@@ -117,7 +117,7 @@ let playHistory = [];
 let historyNavigating = false;
 let songCompleted = false;
 let songStartTime = 0;
-let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [] };
+let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [], genres: [], genrePersonalized: false };
 let homeFeedExpanded = new Set();
 const ALBUM_LIMIT = 6;
 const ARTIST_LIMIT = 6;
@@ -703,7 +703,7 @@ function playSong(index) {
         logPlayCompletion(currentSong, songCompleted, !songCompleted);
         pushToHistory(currentSong);
     }
-    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits') {
+    if (queueSource !== 'daily-mix' && queueSource !== 'discovery' && queueSource !== 'because-liked' && queueSource !== 'charts' && queueSource !== 'hot-hits' && queueSource !== 'genres') {
         clearStaleQueueItems();
     }
     audioErrorRetried = false;
@@ -1538,7 +1538,7 @@ async function loadHomeFeed() {
 }
 
 async function fetchHomeFeed() {
-    const [recent, dailyMixes, discovery, becauseLiked, albums, artists, charts, hotHits] = await Promise.all([
+    const [recent, dailyMixes, discovery, becauseLiked, albums, artists, charts, hotHits, genres] = await Promise.all([
         authFetch("/api/user/recently-played").then(r => r.ok ? r.json() : {tracks: []}),
         authFetch("/api/user/daily-mix").then(r => r.ok ? r.json() : {mixes: []}),
         authFetch("/api/user/mixes/discovery").then(r => r.ok ? r.json() : {mix: null}),
@@ -1547,6 +1547,7 @@ async function fetchHomeFeed() {
         authFetch("/api/user/mixes/new-artists").then(r => r.ok ? r.json() : {artists: []}),
         authFetch("/api/charts").then(r => r.ok ? r.json() : {charts: []}),
         authFetch("/api/hot-hits").then(r => r.ok ? r.json() : {hits: []}),
+        authFetch("/api/user/mixes/genre-charts").then(r => r.ok ? r.json() : {genres: []}),
     ]);
 
     homeFeedData.recent = (recent.tracks || []).map(t => ({ ...t, id: t.id || t.video_id }));
@@ -1557,9 +1558,15 @@ async function fetchHomeFeed() {
     homeFeedData.artists = artists.artists || [];
     homeFeedData.charts = charts.charts || [];
     homeFeedData.hotHits = hotHits.hits || [];
+    homeFeedData.genres = genres.genres || [];
+    homeFeedData.genrePersonalized = !!genres.personalized;
     homeFeedExpanded.clear();
 
     let html = "";
+
+    if (homeFeedData.genres.length) {
+        html += renderGenreSection(false);
+    }
 
     if (homeFeedData.hotHits.length) {
         html += renderHotHitsSection(false);
@@ -1664,6 +1671,7 @@ function sectionHTML(key) {
     switch (key) {
         case "recent": return renderRecentlyPlayedSection(expanded);
         case "daily": return renderDailyMixesSection(expanded);
+        case "genres": return renderGenreSection(expanded);
         case "hot_hits": return renderHotHitsSection(expanded);
         case "charts": return renderChartsSection(expanded);
         case "discovery": return renderDiscoveryMixSection(expanded);
@@ -1740,6 +1748,37 @@ function renderDailyMixesSection(expanded) {
 function mixThumb(mix) {
     const t = (mix.tracks || []).find(x => x && x.thumbnail) || (mix.tracks || [])[0] || {};
     return hiRes(t.thumbnail || "");
+}
+
+function renderGenreSection(expanded) {
+    const genres = homeFeedData.genres;
+    if (!genres.length) return "";
+    const title = homeFeedData.genrePersonalized
+        ? "&#127760; Your Genres"
+        : "&#127925; Moods & Genres";
+    const subtitle = homeFeedData.genrePersonalized
+        ? "Official charts for the genres you listen to"
+        : "Official playlists by mood";
+    let html = `<div class="home-section" id="sec_genres">${sectionHeader(title, subtitle, "genres", expanded)}`;
+    if (!expanded) {
+        html += `<div class="mix-grid">`;
+        genres.forEach((g, i) => {
+            html += `
+                <div class="mix-card" onclick="openMixDetail('genres', ${i})">
+                    <img src="${mixThumb(g)}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMixTrack('genres', ${i}, 0)">&#9654;</button>
+                    <div class="mix-title">${esc(g.name)}</div>
+                    <div class="mix-subtitle">${g.tracks.length} tracks</div>
+                </div>`;
+        });
+        html += `</div>`;
+    } else {
+        genres.forEach((g, i) => {
+            html += `<div class="mix-track-section-title">${esc(g.name)} &middot; ${g.tracks.length} tracks</div>`;
+            html += (g.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('genres', ${i}, ${j})`)).join("");
+        });
+    }
+    return html + `</div>`;
 }
 
 function renderHotHitsSection(expanded) {
@@ -1904,10 +1943,13 @@ function playMixTrack(type, mixIndex, trackIndex) {
     } else if (type === 'hot_hits') {
         const c = homeFeedData.hotHits[mixIndex];
         if (c) tracks = c.tracks;
+    } else if (type === 'genres') {
+        const c = homeFeedData.genres[mixIndex];
+        if (c) tracks = c.tracks;
     }
     if (!tracks || !tracks.length) return;
     queue = tracks;
-    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : type === 'charts' ? 'charts' : type === 'hot_hits' ? 'hot-hits' : 'because-liked');
+    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : type === 'charts' ? 'charts' : type === 'hot_hits' ? 'hot-hits' : type === 'genres' ? 'genres' : 'because-liked');
     enqueueMixTracks(queue.slice(1));
     playSong(trackIndex);
 }
@@ -1944,6 +1986,12 @@ function openMixDetail(type, mixIndex) {
         if (!c) return;
         title = c.name || "Hot Hits";
         subtitle = "Trending hits, updated regularly";
+        tracks = c.tracks || [];
+    } else if (type === 'genres') {
+        const c = homeFeedData.genres[mixIndex];
+        if (!c) return;
+        title = c.name || "Genre";
+        subtitle = homeFeedData.genrePersonalized ? "Matched to your taste" : "Official YouTube Music playlist";
         tracks = c.tracks || [];
     }
     if (!tracks.length) return;

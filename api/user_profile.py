@@ -286,6 +286,13 @@ def new_artist_suggestions(user: dict = Depends(get_current_user)):
     return {"artists": artists}
 
 
+@router.get("/mixes/genre-charts")
+def genre_charts(user: dict = Depends(get_current_user)):
+    """Official YTM genre playlists for the user's top detected genres."""
+    from api.genre_mixes import get_user_genre_charts
+    return get_user_genre_charts(user["user_id"])
+
+
 @router.get("/suggestions")
 def suggestions(user: dict = Depends(get_current_user)):
     """Generate personalized suggestions based on liked songs and history."""
