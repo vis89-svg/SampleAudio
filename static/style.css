@@ -1,36 +1,41 @@
 :root {
-    /* Brand */
-    --accent: #1db954;
-    --accent-bright: #1ed760;
-    --accent-dim: rgba(29, 185, 84, 0.14);
-    --accent-soft: rgba(29, 185, 84, 0.35);
+    /* Brand — warm amber signature */
+    --accent: #ff9a3c;
+    --accent-bright: #ffb15c;
+    --accent-dim: rgba(255, 154, 60, 0.14);
+    --accent-soft: rgba(255, 154, 60, 0.42);
+    --accent-grad: linear-gradient(135deg, #ffb15c, #ff8a3d);
 
-    /* Surfaces */
-    --bg: #0a0a0a;
-    --bg-2: #0e0f10;
-    --surface: #161616;
-    --surface-2: #1a1a1a;
-    --surface-hover: #242424;
-    --elevated: #1e1e1e;
+    /* Surfaces — warm graphite */
+    --bg: #151210;
+    --bg-2: #1a1613;
+    --surface: #211c18;
+    --surface-2: #26201b;
+    --surface-hover: #302821;
+    --elevated: #2b2420;
 
     /* Lines */
-    --border: #262626;
-    --border-strong: #3a3a3a;
+    --border: #332b24;
+    --border-strong: #473a2f;
 
-    /* Text */
-    --text: #ececec;
-    --text-dim: #a6a6a6;
-    --text-muted: #6f6f6f;
+    /* Text — warm off-white */
+    --text: #f3ede4;
+    --text-dim: #b8ab9c;
+    --text-muted: #857868;
 
-    /* Radius */
-    --radius-sm: 8px;
-    --radius: 12px;
-    --radius-lg: 18px;
+    /* Semantic */
+    --danger: #ff6b6b;
 
-    /* Depth */
-    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
-    --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.45);
-    --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.6);
+    /* Radius — soft floating panels */
+    --radius-sm: 10px;
+    --radius: 16px;
+    --radius-lg: 22px;
+
+    /* Depth — warm, soft shadows */
+    --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 14px 36px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.65);
+    --glow: 0 8px 30px rgba(255, 138, 61, 0.28);
 
     --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -48,7 +53,8 @@ html {
 body {
     font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background:
-        radial-gradient(1200px 600px at 50% -10%, rgba(29, 185, 84, 0.08), transparent 60%),
+        radial-gradient(1100px 520px at 15% -10%, rgba(255, 138, 61, 0.10), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(255, 154, 60, 0.06), transparent 50%),
         var(--bg);
     background-attachment: fixed;
     color: var(--text);
@@ -65,7 +71,7 @@ body {
 /* Global thin scrollbars */
 * {
     scrollbar-width: thin;
-    scrollbar-color: #333 transparent;
+    scrollbar-color: var(--border) transparent;
 }
 *::-webkit-scrollbar {
     width: 10px;
@@ -78,7 +84,7 @@ body {
     background-clip: padding-box;
 }
 *::-webkit-scrollbar-thumb:hover {
-    background: #3a3a3a;
+    background: var(--border-strong);
     background-clip: padding-box;
 }
 
@@ -131,7 +137,7 @@ header h1 {
 
 .search-box input:focus {
     border-color: var(--accent);
-    background: #101010;
+    background: var(--bg-2);
     box-shadow: 0 0 0 4px var(--accent-dim);
 }
 
@@ -160,7 +166,7 @@ header h1 {
     justify-content: center;
     gap: 8px;
     font-size: 0.85rem;
-    color: #888;
+    color: var(--text-dim);
     flex-wrap: wrap;
 }
 
@@ -169,23 +175,23 @@ header h1 {
     align-items: center;
     gap: 5px;
     cursor: pointer;
-    color: #aaa;
+    color: var(--text-dim);
     padding: 6px 10px;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 6px;
 }
 
 .quality-selector .clean-toggle input[type="checkbox"] {
-    accent-color: #1db954;
+    accent-color: var(--accent);
     cursor: pointer;
 }
 
 .quality-selector select {
     padding: 6px 10px;
-    background: #1a1a1a;
+    background: var(--surface-2);
     color: #fff;
-    border: 1px solid #333;
+    border: 1px solid var(--border);
     border-radius: 6px;
     font-size: 0.85rem;
 }
@@ -195,7 +201,7 @@ header h1 {
     top: 16px;
     left: 50%;
     transform: translateX(-50%) translateY(-10px);
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     padding: 8px 16px;
     border-radius: 20px;
@@ -280,7 +286,7 @@ header h1 {
     object-fit: cover;
     border-radius: var(--radius-sm);
     margin-bottom: 12px;
-    background: #282828;
+    background: var(--surface-hover);
     box-shadow: var(--shadow-sm);
 }
 
@@ -298,7 +304,7 @@ header h1 {
 
 .song-card .artist-name, .album-card .artist-name {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-dim);
     margin-top: 4px;
     white-space: nowrap;
     overflow: hidden;
@@ -307,7 +313,7 @@ header h1 {
 
 .song-card .duration {
     font-size: 0.75rem;
-    color: #666;
+    color: var(--text-muted);
     margin-top: 4px;
 }
 
@@ -322,7 +328,7 @@ header h1 {
 }
 
 .song-row:hover {
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .song-row img {
@@ -330,7 +336,7 @@ header h1 {
     height: 44px;
     border-radius: 4px;
     object-fit: cover;
-    background: #282828;
+    background: var(--surface-hover);
     flex-shrink: 0;
 }
 
@@ -349,19 +355,19 @@ header h1 {
 
 .song-row .info .subtitle {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-dim);
 }
 
 .song-row .duration {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-muted);
     flex-shrink: 0;
 }
 
 .song-kebab-btn {
     background: transparent;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     padding: 4px;
     border-radius: 4px;
@@ -379,11 +385,11 @@ header h1 {
 
 .song-kebab-btn:hover {
     color: #fff;
-    background: #333;
+    background: var(--border);
 }
 
 .song-menu {
-    background: #282828;
+    background: var(--surface-hover);
     border-radius: 8px;
     padding: 6px 0;
     min-width: 150px;
@@ -395,7 +401,7 @@ header h1 {
     width: 100%;
     padding: 10px 16px;
     background: transparent;
-    color: #e0e0e0;
+    color: var(--text);
     border: none;
     text-align: left;
     font-size: 0.85rem;
@@ -404,13 +410,13 @@ header h1 {
 }
 
 .song-menu button:hover {
-    background: #333;
+    background: var(--border);
 }
 
 .song-remove-btn {
     background: transparent;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     cursor: pointer;
     padding: 4px 6px;
     border-radius: 4px;
@@ -421,7 +427,7 @@ header h1 {
 
 .song-remove-btn:hover {
     color: #ff6b6b;
-    background: #333;
+    background: var(--border);
 }
 
 .artist-view, .album-view {
@@ -438,9 +444,9 @@ header h1 {
     max-width: 320px;
     margin: 16px auto 0;
     padding: 10px 20px;
-    background: #282828;
+    background: var(--surface-hover);
     color: #fff;
-    border: 1px solid #444;
+    border: 1px solid var(--border-strong);
     border-radius: 20px;
     font-size: 0.9rem;
     cursor: pointer;
@@ -448,9 +454,9 @@ header h1 {
 }
 
 .show-more-btn:hover {
-    background: #333;
-    border-color: #1db954;
-    color: #1db954;
+    background: var(--border);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .show-more-btn:disabled {
@@ -470,7 +476,7 @@ header h1 {
     height: 180px;
     border-radius: 50%;
     object-fit: cover;
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .artist-header h2 {
@@ -480,7 +486,7 @@ header h1 {
 .back-btn {
     background: none;
     border: none;
-    color: #1db954;
+    color: var(--accent);
     cursor: pointer;
     font-size: 0.9rem;
     margin-bottom: 15px;
@@ -496,7 +502,7 @@ header h1 {
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 24px;
-    background: #1a1a1a;
+    background: var(--surface-2);
     min-height: 200px;
 }
 
@@ -530,7 +536,7 @@ header h1 {
     height: 140px;
     border-radius: 50%;
     object-fit: cover;
-    background: #282828;
+    background: var(--surface-hover);
     box-shadow: 0 8px 24px rgba(0,0,0,0.5);
 }
 
@@ -551,7 +557,7 @@ header h1 {
 }
 
 .artist-banner-sub {
-    color: #ccc;
+    color: var(--text-dim);
     margin-top: 8px;
     font-size: 0.95rem;
     text-shadow: 0 1px 6px rgba(0,0,0,0.6);
@@ -566,7 +572,7 @@ header h1 {
 .artist-radio-btn {
     background: transparent;
     color: #fff;
-    border: 1px solid #555;
+    border: 1px solid var(--text-muted);
     border-radius: 20px;
     padding: 9px 22px;
     font-size: 0.9rem;
@@ -575,9 +581,9 @@ header h1 {
 }
 
 .artist-radio-btn:hover {
-    background: #333;
-    border-color: #1db954;
-    color: #1db954;
+    background: var(--border);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .round-artist-img {
@@ -598,7 +604,7 @@ header h1 {
 .artist-section-tab {
     background: none;
     border: none;
-    color: #999;
+    color: var(--text-dim);
     font-size: 0.95rem;
     padding: 8px 14px;
     border-radius: 18px;
@@ -612,13 +618,13 @@ header h1 {
 
 .artist-section-tab.active {
     color: #fff;
-    background: #282828;
+    background: var(--surface-hover);
     font-weight: 600;
 }
 
 .play-count {
     font-size: 0.75rem;
-    color: #1db954;
+    color: var(--accent);
     background: rgba(29, 185, 84, 0.12);
     border: 1px solid rgba(29, 185, 84, 0.35);
     border-radius: 10px;
@@ -632,9 +638,9 @@ header h1 {
     max-width: 320px;
     margin: 16px auto 0;
     padding: 10px 20px;
-    background: #282828;
+    background: var(--surface-hover);
     color: #fff;
-    border: 1px solid #444;
+    border: 1px solid var(--border-strong);
     border-radius: 20px;
     font-size: 0.9rem;
     cursor: pointer;
@@ -642,9 +648,9 @@ header h1 {
 }
 
 .see-more-btn:hover {
-    background: #333;
-    border-color: #1db954;
-    color: #1db954;
+    background: var(--border);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .discover-grid {
@@ -689,7 +695,7 @@ header h1 {
     font-weight: 600;
     font-size: 0.9rem;
     color: #fff;
-    background: linear-gradient(135deg, #1db954, #11998e);
+    background: linear-gradient(135deg, var(--accent), #11998e);
     box-sizing: border-box;
 }
 
@@ -747,7 +753,7 @@ header h1 {
     height: 56px;
     border-radius: var(--radius-sm);
     object-fit: cover;
-    background: #282828;
+    background: var(--surface-hover);
     flex-shrink: 0;
     box-shadow: var(--shadow-sm);
     transition: transform 0.2s var(--ease);
@@ -768,7 +774,7 @@ header h1 {
 
 .player-artist {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-dim);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -777,7 +783,7 @@ header h1 {
 
 .player-album {
     font-size: 0.7rem;
-    color: #666;
+    color: var(--text-muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -786,11 +792,11 @@ header h1 {
 }
 
 .player-album[style*="cursor"] {
-    color: #888;
+    color: var(--text-dim);
 }
 
 .player-album[style*="cursor"]:hover {
-    color: #1db954;
+    color: var(--accent);
     text-decoration: underline;
 }
 
@@ -802,7 +808,7 @@ header h1 {
 
 .kebab-btn {
     background: transparent;
-    color: #888;
+    color: var(--text-dim);
     border: none;
     border-radius: 50%;
     width: 34px;
@@ -816,14 +822,14 @@ header h1 {
 
 .kebab-btn:hover {
     color: #fff;
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .kebab-menu {
     position: absolute;
     bottom: 44px;
     left: 0;
-    background: #282828;
+    background: var(--surface-hover);
     border-radius: 8px;
     padding: 6px 0;
     min-width: 180px;
@@ -836,7 +842,7 @@ header h1 {
     width: 100%;
     padding: 10px 16px;
     background: transparent;
-    color: #e0e0e0;
+    color: var(--text);
     border: none;
     text-align: left;
     font-size: 0.85rem;
@@ -845,7 +851,7 @@ header h1 {
 }
 
 .kebab-menu button:hover {
-    background: #333;
+    background: var(--border);
 }
 
 .kebab-menu .cancel-btn {
@@ -854,7 +860,7 @@ header h1 {
 
 .kebab-sep {
     height: 1px;
-    background: #333;
+    background: var(--border);
     margin: 4px 0;
 }
 
@@ -876,7 +882,7 @@ header h1 {
 
 .ctrl-btn {
     background: transparent;
-    color: #b3b3b3;
+    color: var(--text-dim);
     border: none;
     border-radius: 50%;
     width: 34px;
@@ -905,7 +911,7 @@ header h1 {
 }
 
 .play-btn:hover {
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     transform: scale(1.08);
 }
@@ -925,7 +931,7 @@ header h1 {
 }
 
 .skip-btn:hover {
-    color: #1db954;
+    color: var(--accent);
 }
 
 .player-progress {
@@ -937,7 +943,7 @@ header h1 {
 
 .time-label {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-dim);
     min-width: 38px;
     text-align: center;
     font-variant-numeric: tabular-nums;
@@ -947,7 +953,7 @@ header h1 {
     flex: 1;
     -webkit-appearance: none;
     height: 4px;
-    background: #3a3a3a;
+    background: var(--border-strong);
     border-radius: 999px;
     outline: none;
     cursor: pointer;
@@ -984,7 +990,7 @@ header h1 {
 }
 
 .sleep-badge {
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     font-size: 0.7rem;
     font-weight: 600;
@@ -1004,7 +1010,7 @@ header h1 {
     flex: 1;
     -webkit-appearance: none;
     height: 4px;
-    background: #333;
+    background: var(--border);
     border-radius: 2px;
     outline: none;
     cursor: pointer;
@@ -1014,7 +1020,7 @@ header h1 {
     -webkit-appearance: none;
     width: 12px;
     height: 12px;
-    background: #1db954;
+    background: var(--accent);
     border-radius: 50%;
     cursor: pointer;
     opacity: 0;
@@ -1045,7 +1051,7 @@ header h1 {
     height: 100%;
     object-fit: cover;
     border-radius: inherit;
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 /* === Now Playing (Apple Music style) === */
@@ -1055,7 +1061,7 @@ header h1 {
     left: 0;
     right: 0;
     bottom: 0;
-    background: #0a0a0e;
+    background: var(--bg);
     z-index: 200;
     display: flex;
     align-items: center;
@@ -1081,7 +1087,7 @@ header h1 {
     background: rgba(255, 255, 255, 0.08);
     border: none;
     border-radius: 50%;
-    color: #e8e8ed;
+    color: var(--text);
     font-size: 1.4rem;
     width: 40px;
     height: 40px;
@@ -1129,7 +1135,7 @@ header h1 {
     height: 340px;
     border-radius: 16px;
     object-fit: cover;
-    background: #1c1c22;
+    background: var(--surface-hover);
     box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
     animation: npArtIn 0.5s var(--ease);
 }
@@ -1164,7 +1170,7 @@ header h1 {
 
 .np-album {
     font-size: 0.95rem;
-    color: #a0a0a8;
+    color: var(--text-dim);
     text-align: center;
     cursor: default;
 }
@@ -1188,7 +1194,7 @@ header h1 {
 
 .np-progress .time-label {
     font-size: 0.75rem;
-    color: #8e8e93;
+    color: var(--text-dim);
     min-width: 36px;
 }
 
@@ -1225,7 +1231,7 @@ header h1 {
 .np-controls .ctrl-btn {
     background: none;
     border: none;
-    color: #e8e8ed;
+    color: var(--text);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1240,7 +1246,7 @@ header h1 {
 }
 
 .np-controls .ctrl-btn.np-toggle {
-    color: #8e8e93;
+    color: var(--text-dim);
 }
 
 .np-controls .ctrl-btn.np-toggle.active {
@@ -1267,12 +1273,12 @@ header h1 {
     height: 64px;
     border-radius: 50%;
     background: #fff;
-    color: #0a0a0e;
+    color: var(--bg);
 }
 
 .np-controls .play-btn:hover {
     transform: scale(1.05);
-    color: #0a0a0e;
+    color: var(--bg);
 }
 
 .np-actions {
@@ -1284,7 +1290,7 @@ header h1 {
 
 .np-action-btn {
     background: none;
-    color: #c7c7cc;
+    color: var(--text-dim);
     border: none;
     padding: 6px;
     cursor: pointer;
@@ -1307,7 +1313,7 @@ header h1 {
     align-items: center;
     gap: 10px;
     margin-top: 18px;
-    color: #8e8e93;
+    color: var(--text-dim);
     width: 180px;
 }
 
@@ -1346,7 +1352,7 @@ header h1 {
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: #8e8e93;
+    color: var(--text-dim);
     padding-bottom: 14px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     margin-bottom: 10px;
@@ -1394,7 +1400,7 @@ header h1 {
 
 .np-lyrics-loading,
 .np-lyrics-empty {
-    color: #8e8e93;
+    color: var(--text-dim);
     text-align: center;
     padding-top: 40px;
     font-size: 0.95rem;
@@ -1407,19 +1413,19 @@ header h1 {
 .loading {
     text-align: center;
     padding: 40px;
-    color: #888;
+    color: var(--text-dim);
 }
 
 .empty-state {
     text-align: center;
     padding: 60px 20px;
-    color: #666;
+    color: var(--text-muted);
 }
 
 .explicit-badge {
     display: inline-block;
-    background: #333;
-    color: #aaa;
+    background: var(--border);
+    color: var(--text-dim);
     font-size: 0.65rem;
     padding: 1px 4px;
     border-radius: 2px;
@@ -1441,7 +1447,7 @@ header h1 {
 }
 
 .auth-link {
-    color: #888;
+    color: var(--text-dim);
     text-decoration: none;
     font-size: 0.85rem;
     padding: 6px 14px;
@@ -1454,13 +1460,13 @@ header h1 {
 }
 
 .btn-auth {
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     font-weight: 600;
 }
 
 .btn-auth:hover {
-    background: #1ed760;
+    background: var(--accent-bright);
     color: #000;
 }
 
@@ -1473,23 +1479,23 @@ header h1 {
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background: #1a1a1a;
-    border: 1px solid #333;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
     border-radius: 20px;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s;
 }
 
 .user-menu:hover {
-    background: #282828;
-    border-color: #555;
+    background: var(--surface-hover);
+    border-color: var(--text-muted);
 }
 
 .user-icon {
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     display: flex;
     align-items: center;
@@ -1501,7 +1507,7 @@ header h1 {
 
 .user-name {
     font-size: 0.85rem;
-    color: #e0e0e0;
+    color: var(--text);
     max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1512,7 +1518,7 @@ header h1 {
     position: absolute;
     top: 44px;
     right: 0;
-    background: #282828;
+    background: var(--surface-hover);
     border-radius: 8px;
     padding: 6px 0;
     min-width: 200px;
@@ -1524,12 +1530,12 @@ header h1 {
     padding: 10px 16px;
     font-weight: 600;
     font-size: 0.85rem;
-    color: #1db954;
+    color: var(--accent);
 }
 
 .user-dropdown-sep {
     height: 1px;
-    background: #333;
+    background: var(--border);
     margin: 4px 0;
 }
 
@@ -1538,7 +1544,7 @@ header h1 {
     width: 100%;
     padding: 10px 16px;
     background: transparent;
-    color: #e0e0e0;
+    color: var(--text);
     border: none;
     text-align: left;
     font-size: 0.85rem;
@@ -1547,7 +1553,7 @@ header h1 {
 }
 
 .user-dropdown button:hover {
-    background: #333;
+    background: var(--border);
 }
 
 .user-dropdown .logout-btn {
@@ -1555,11 +1561,11 @@ header h1 {
 }
 
 #likeBtn.liked {
-    color: #1db954;
+    color: var(--accent);
 }
 
 #likeBtn.liked:hover {
-    color: #1ed760;
+    color: var(--accent-bright);
 }
 
 /* === Login Page === */
@@ -1572,7 +1578,7 @@ header h1 {
 }
 
 .login-card {
-    background: linear-gradient(180deg, #181818, #131313);
+    background: linear-gradient(180deg, var(--surface), var(--bg-2));
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 44px 40px;
@@ -1596,7 +1602,7 @@ header h1 {
 
 .login-subtitle {
     text-align: center;
-    color: #888;
+    color: var(--text-dim);
     font-size: 0.9rem;
     margin-bottom: 30px;
 }
@@ -1613,7 +1619,7 @@ header h1 {
     flex: 1;
     padding: 8px 16px;
     background: transparent;
-    color: #888;
+    color: var(--text-dim);
     border: none;
     border-radius: 6px;
     cursor: pointer;
@@ -1622,8 +1628,8 @@ header h1 {
 }
 
 .auth-tab.active {
-    color: #1db954;
-    background: #1a1a1a;
+    color: var(--accent);
+    background: var(--surface-2);
 }
 
 .auth-tab:hover {
@@ -1644,14 +1650,14 @@ header h1 {
 
 .form-group label {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-dim);
 }
 
 .form-group input {
     padding: 10px 14px;
-    border: 1px solid #333;
+    border: 1px solid var(--border);
     border-radius: 8px;
-    background: #0a0a0a;
+    background: var(--bg);
     color: #fff;
     font-size: 0.9rem;
     outline: none;
@@ -1659,12 +1665,12 @@ header h1 {
 }
 
 .form-group input:focus {
-    border-color: #1db954;
+    border-color: var(--accent);
 }
 
 .auth-btn {
     padding: 12px;
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     border: none;
     border-radius: 8px;
@@ -1676,7 +1682,7 @@ header h1 {
 }
 
 .auth-btn:hover {
-    background: #1ed760;
+    background: var(--accent-bright);
 }
 
 .auth-error {
@@ -1694,14 +1700,14 @@ header h1 {
 }
 
 .guest-link {
-    color: #666;
+    color: var(--text-muted);
     font-size: 0.85rem;
     text-decoration: none;
     transition: color 0.15s;
 }
 
 .guest-link:hover {
-    color: #1db954;
+    color: var(--accent);
 }
 
 /* === Profile Page === */
@@ -1710,7 +1716,7 @@ header h1 {
     align-items: center;
     gap: 20px;
     padding: 24px;
-    background: linear-gradient(135deg, #1a1a1a 0%, #282828 100%);
+    background: linear-gradient(135deg, var(--surface-2) 0%, var(--surface-hover) 100%);
     border-radius: 12px;
     margin-bottom: 24px;
 }
@@ -1719,7 +1725,7 @@ header h1 {
     width: 80px;
     height: 80px;
     border-radius: 50%;
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     display: flex;
     align-items: center;
@@ -1742,7 +1748,7 @@ header h1 {
 
 .profile-stats span {
     font-size: 0.85rem;
-    color: #888;
+    color: var(--text-dim);
 }
 
 .profile-stats strong {
@@ -1769,13 +1775,13 @@ header h1 {
 
 .profile-section-subtitle {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-muted);
 }
 
 .mix-play-btn {
     margin-left: auto;
     padding: 8px 16px;
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     border: none;
     border-radius: 20px;
@@ -1786,11 +1792,11 @@ header h1 {
 }
 
 .mix-play-btn:hover {
-    background: #1ed760;
+    background: var(--accent-bright);
 }
 
 .profile-section-tracks {
-    background: #161616;
+    background: var(--surface);
     border-radius: 8px;
     overflow: hidden;
 }
@@ -1810,7 +1816,7 @@ header h1 {
 }
 
 .mini-card {
-    background: #161616;
+    background: var(--surface);
     border-radius: 8px;
     padding: 16px 12px;
     text-align: center;
@@ -1819,7 +1825,7 @@ header h1 {
 }
 
 .mini-card:hover {
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .mini-card-icon {
@@ -1837,7 +1843,7 @@ header h1 {
 
 .mini-card-sub {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-dim);
     margin-top: 4px;
     white-space: nowrap;
     overflow: hidden;
@@ -1855,7 +1861,7 @@ header h1 {
 }
 
 .profile-empty p {
-    color: #888;
+    color: var(--text-dim);
     margin-bottom: 20px;
 }
 
@@ -1866,8 +1872,8 @@ header h1 {
     right: 0;
     bottom: 80px;
     width: 340px;
-    background: #111;
-    border-left: 1px solid #282828;
+    background: var(--bg-2);
+    border-left: 1px solid var(--surface-hover);
     z-index: 90;
     display: flex;
     flex-direction: column;
@@ -1884,7 +1890,7 @@ header h1 {
     align-items: center;
     justify-content: space-between;
     padding: 16px 20px;
-    border-bottom: 1px solid #282828;
+    border-bottom: 1px solid var(--surface-hover);
     flex-shrink: 0;
 }
 
@@ -1897,7 +1903,7 @@ header h1 {
 .up-next-close {
     background: none;
     border: none;
-    color: #888;
+    color: var(--text-dim);
     font-size: 1.4rem;
     cursor: pointer;
     line-height: 1;
@@ -1908,7 +1914,7 @@ header h1 {
 
 .up-next-close:hover {
     color: #fff;
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .up-next-list {
@@ -1925,8 +1931,8 @@ header h1 {
 .up-next-divider {
     padding: 8px 0 4px;
     margin-top: 8px;
-    border-top: 1px solid #333;
-    color: #888;
+    border-top: 1px solid var(--border);
+    color: var(--text-dim);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -1938,7 +1944,7 @@ header h1 {
 }
 
 .up-next-btn:hover {
-    color: #1db954;
+    color: var(--accent);
 }
 
 @media (max-width: 768px) {
@@ -2002,7 +2008,7 @@ header h1 {
         top: auto;
         height: 70vh;
         border-left: none;
-        border-top: 1px solid #282828;
+        border-top: 1px solid var(--surface-hover);
     }
     @keyframes slideIn {
         from { transform: translateY(100%); }
@@ -2099,8 +2105,8 @@ header h1 {
 
 .home-refresh-btn {
     background: transparent;
-    border: 1px solid #444;
-    color: #aaa;
+    border: 1px solid var(--border-strong);
+    color: var(--text-dim);
     border-radius: 18px;
     padding: 6px 14px;
     font-size: 0.85rem;
@@ -2109,8 +2115,8 @@ header h1 {
 }
 
 .home-refresh-btn:hover {
-    border-color: #1db954;
-    color: #1db954;
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .home-content {
@@ -2152,14 +2158,14 @@ header h1 {
 
 .home-section-header .section-subtitle {
     font-size: 0.8rem;
-    color: #666;
+    color: var(--text-muted);
     margin-top: 2px;
 }
 
 .home-section-header .show-all-btn {
     background: none;
     border: none;
-    color: #888;
+    color: var(--text-dim);
     font-size: 0.85rem;
     cursor: pointer;
     font-weight: 600;
@@ -2207,7 +2213,7 @@ header h1 {
     object-fit: cover;
     border-radius: var(--radius-sm);
     margin-bottom: 12px;
-    background: #282828;
+    background: var(--surface-hover);
     box-shadow: var(--shadow-sm);
 }
 
@@ -2221,7 +2227,7 @@ header h1 {
 
 .mix-card .mix-subtitle {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-dim);
     margin-top: 4px;
 }
 
@@ -2232,7 +2238,7 @@ header h1 {
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: #1db954;
+    background: var(--accent);
     color: #000;
     border: none;
     cursor: pointer;
@@ -2246,7 +2252,7 @@ header h1 {
 }
 
 .mix-play-btn:hover {
-    background: #1ed760;
+    background: var(--accent-bright);
     transform: scale(1.05) translateY(0) !important;
 }
 
@@ -2261,7 +2267,7 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 12px;
-    background: #161616;
+    background: var(--surface);
     border-radius: 6px;
     padding: 8px 12px;
     cursor: pointer;
@@ -2269,7 +2275,7 @@ header h1 {
 }
 
 .quick-play-item:hover {
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .quick-play-item img {
@@ -2277,7 +2283,7 @@ header h1 {
     height: 48px;
     border-radius: 4px;
     object-fit: cover;
-    background: #282828;
+    background: var(--surface-hover);
     flex-shrink: 0;
 }
 
@@ -2296,7 +2302,7 @@ header h1 {
     overflow-x: auto;
     padding-bottom: 8px;
     scrollbar-width: thin;
-    scrollbar-color: #333 transparent;
+    scrollbar-color: var(--border) transparent;
 }
 
 .scroll-row::-webkit-scrollbar {
@@ -2308,7 +2314,7 @@ header h1 {
 }
 
 .scroll-row::-webkit-scrollbar-thumb {
-    background: #333;
+    background: var(--border);
     border-radius: 3px;
 }
 
@@ -2348,7 +2354,7 @@ header h1 {
     object-fit: cover;
     border-radius: var(--radius-sm);
     margin-bottom: 12px;
-    background: #282828;
+    background: var(--surface-hover);
     box-shadow: var(--shadow-sm);
 }
 
@@ -2362,7 +2368,7 @@ header h1 {
 
 .suggestion-card .card-subtitle {
     font-size: 0.75rem;
-    color: #888;
+    color: var(--text-dim);
     margin-top: 4px;
 }
 
@@ -2402,7 +2408,7 @@ header h1 {
 .section-chevron {
     background: none;
     border: none;
-    color: #888;
+    color: var(--text-dim);
     font-size: 1.3rem;
     line-height: 1;
     cursor: pointer;
@@ -2420,7 +2426,7 @@ header h1 {
     font-size: 0.75rem;
     font-weight: 700;
     border-radius: 5px;
-    border: 1.5px solid #333;
+    border: 1.5px solid var(--border);
     background: rgba(0, 0, 0, 0.7);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
@@ -2450,7 +2456,7 @@ header h1 {
     border-radius: 6px;
     overflow: hidden;
     cursor: pointer;
-    background: #282828;
+    background: var(--surface-hover);
 }
 
 .seed-tile img {
@@ -2470,7 +2476,7 @@ header h1 {
     aspect-ratio: 1;
     object-fit: cover;
     border-radius: 8px;
-    background: #282828;
+    background: var(--surface-hover);
     display: block;
 }
 
@@ -2478,8 +2484,8 @@ header h1 {
     display: block;
     margin: 14px auto 0;
     background: transparent;
-    border: 1px solid #333;
-    color: #e0e0e0;
+    border: 1px solid var(--border);
+    color: var(--text);
     padding: 8px 22px;
     border-radius: 20px;
     cursor: pointer;
@@ -2488,13 +2494,13 @@ header h1 {
 }
 
 .show-more-btn:hover {
-    background: #1a1a1a;
-    border-color: #555;
+    background: var(--surface-2);
+    border-color: var(--text-muted);
 }
 
 .mix-track-section-title {
     margin: 18px 0 8px;
-    color: #bbb;
+    color: var(--text-dim);
     font-size: 0.9rem;
     font-weight: 600;
 }
