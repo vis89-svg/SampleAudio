@@ -1,4 +1,5 @@
 """YouTube Music search via ytmusicapi"""
+import difflib
 import json
 import re
 import time
@@ -33,6 +34,12 @@ RADIO_CACHE_TTL = 6 * 3600
 _playlist_cache: dict[str, tuple[float, dict]] = {}
 _playlist_lock = threading.Lock()
 PLAYLIST_CACHE_TTL = 12 * 3600
+
+_apple_artist_cache: dict[str, tuple[float, bool]] = {}
+_apple_artist_lock = threading.Lock()
+APPLE_ARTIST_CACHE_TTL = 30 * 24 * 3600
+
+_apple_search_pool = ThreadPoolExecutor(max_workers=8)
 
 _artist_cache: dict[tuple[str, int | None], tuple[float, dict]] = {}
 _artist_cache_lock = threading.Lock()
@@ -196,6 +203,38 @@ def _two_row_item(item: dict) -> dict:
         "subtitle": subtitle,
         "thumbnail": _thumb_url(thumbs),
     }
+
+
+def _apple_artist_exists(name: str) -> bool:
+    """True if the artist exists in Apple's (iTunes) catalog. Fail-safe:
+    any error keeps the artist so the section can never end up empty."""
+    with _apple_artist_lock:
+        cached = _apple_artist_cache.get(name)
+        if cached and time.time() - cached[0] < APPLE_ARTIST_CACHE_TTL:
+            return cached[1]
+    exists = True
+    try:
+        url = "https://itunes.apple.com/search?" + urllib.parse.urlencode({
+            "term": name, "media": "music", "entity": "musicArtist", "limit": 5,
+        })
+        req = urllib.request.Request(url, headers={"User-Agent": "SampleAudio/1.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read())
+        needle = name.strip().lower()
+        exists = False
+        for r in (data.get("results") or []):
+            hit = (r.get("artistName") or "").strip().lower()
+            if hit == needle or needle in hit or hit in needle:
+                exists = True
+                break
+            if difflib.SequenceMatcher(None, needle, hit).ratio() > 0.86:
+                exists = True
+                break
+    except Exception:
+        exists = True
+    with _apple_artist_lock:
+        _apple_artist_cache[name] = (time.time(), exists)
+    return exists
 
 
 def get_artist_page(browse_id: str) -> dict:
@@ -471,6 +510,17 @@ def get_artist(browse_id: str, user_id: int | None = None) -> dict:
                 r["thumbnail"] = fans_by_id[r["id"]]
     except Exception:
         pass
+
+    # Apple-flavor filter: drop related artists not present in Apple's catalog
+    # so the section skews mainstream (like Spotify/Apple) instead of
+    # YouTube-only artists. Fail-safe: any lookup error keeps the artist.
+    if related:
+        try:
+            keep = list(_apple_search_pool.map(
+                _apple_artist_exists, [r["name"] for r in related]))
+            related = [r for r, ok in zip(related, keep) if ok]
+        except Exception:
+            pass
 
     result = {
         "id": browse_id,

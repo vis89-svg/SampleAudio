@@ -1,4 +1,4 @@
-/* SampleAudio — Frontend Logic */
+﻿/* SampleAudio â€” Frontend Logic */
 let audio = null;
 let searchInput = null;
 let resultsDiv = null;
@@ -491,7 +491,7 @@ function viewFollowedArtists() {
 function connectYTMusic() {
     toggleUserMenu();
     if (!authToken) return showCleanNoInfo("Login required");
-    showCleanNoInfo("OAuth setup coming soon — add oauth_config.json to enable");
+    showCleanNoInfo("OAuth setup coming soon â€” add oauth_config.json to enable");
 }
 
 /* === Sleep Timer === */
@@ -1115,9 +1115,7 @@ function playSong(index) {
     audio.src = streamUrl(song, quality, clean);
     audio.load();
 
-    if (quality === "saavn") {
-        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
-    } else if (clean) {
+    if (clean) {
         fetch(`/api/sponsorblock/${song.id}/segments`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
@@ -1229,9 +1227,7 @@ function playSongDirect(song) {
     audio.src = streamUrl(song, quality, clean);
     audio.load();
 
-    if (quality === "saavn") {
-        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
-    } else if (clean) {
+    if (clean) {
         fetch(`/api/sponsorblock/${song.id}/segments`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
@@ -1571,9 +1567,7 @@ function playRecommendation(index) {
     audio.src = streamUrl(song, quality, clean);
     audio.load();
 
-    if (quality === "saavn") {
-        showCleanNote(`JioSaavn 320kbps - clean audio, no chatter`);
-    } else if (clean) {
+    if (clean) {
         fetch(`/api/sponsorblock/${song.id}/segments`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
