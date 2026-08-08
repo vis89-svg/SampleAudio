@@ -1,32 +1,109 @@
+:root {
+    /* Brand */
+    --accent: #1db954;
+    --accent-bright: #1ed760;
+    --accent-dim: rgba(29, 185, 84, 0.14);
+    --accent-soft: rgba(29, 185, 84, 0.35);
+
+    /* Surfaces */
+    --bg: #0a0a0a;
+    --bg-2: #0e0f10;
+    --surface: #161616;
+    --surface-2: #1a1a1a;
+    --surface-hover: #242424;
+    --elevated: #1e1e1e;
+
+    /* Lines */
+    --border: #262626;
+    --border-strong: #3a3a3a;
+
+    /* Text */
+    --text: #ececec;
+    --text-dim: #a6a6a6;
+    --text-muted: #6f6f6f;
+
+    /* Radius */
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 18px;
+
+    /* Depth */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.6);
+
+    --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+html {
+    background: var(--bg);
+}
+
 body {
     font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0a0a0a;
-    color: #e0e0e0;
+    background:
+        radial-gradient(1200px 600px at 50% -10%, rgba(29, 185, 84, 0.08), transparent 60%),
+        var(--bg);
+    background-attachment: fixed;
+    color: var(--text);
     min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+::selection {
+    background: var(--accent-soft);
+    color: #fff;
+}
+
+/* Global thin scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+}
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+    background: #2c2c2c;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+    background: #3a3a3a;
+    background-clip: padding-box;
 }
 
 #app {
     max-width: 1200px;
     margin: 0 auto;
     padding: 20px;
-    padding-bottom: 120px;
+    padding-bottom: 132px;
 }
 
 header {
     text-align: center;
-    padding: 30px 0;
+    padding: 34px 0 26px;
 }
 
 header h1 {
-    font-size: 2rem;
-    color: #1db954;
-    margin-bottom: 20px;
+    font-size: 2.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin-bottom: 22px;
+    background: linear-gradient(120deg, var(--accent-bright), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: var(--accent);
 }
 
 .search-box {
@@ -38,33 +115,43 @@ header h1 {
 
 .search-box input {
     flex: 1;
-    padding: 12px 16px;
-    border: 1px solid #333;
-    border-radius: 8px;
-    background: #1a1a1a;
+    padding: 13px 18px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface-2);
     color: #fff;
     font-size: 1rem;
     outline: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s var(--ease), box-shadow 0.2s var(--ease), background 0.2s;
+}
+
+.search-box input::placeholder {
+    color: var(--text-muted);
 }
 
 .search-box input:focus {
-    border-color: #1db954;
+    border-color: var(--accent);
+    background: #101010;
+    box-shadow: 0 0 0 4px var(--accent-dim);
 }
 
 .search-box button {
-    padding: 12px 24px;
-    background: #1db954;
+    padding: 12px 26px;
+    background: var(--accent);
     color: #000;
     border: none;
-    border-radius: 8px;
-    font-weight: 600;
+    border-radius: 999px;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.1s;
 }
 
 .search-box button:hover {
-    background: #1ed760;
+    background: var(--accent-bright);
+}
+
+.search-box button:active {
+    transform: scale(0.97);
 }
 
 .quality-selector {
@@ -136,21 +223,26 @@ header h1 {
 .tab {
     padding: 8px 20px;
     background: transparent;
-    color: #888;
+    color: var(--text-dim);
     border: none;
-    border-radius: 6px 6px 0 0;
+    border-radius: 999px;
     cursor: pointer;
     font-size: 0.95rem;
-    transition: all 0.2s;
+    font-weight: 600;
+    transition: color 0.2s, background 0.2s;
 }
 
 .tab.active {
-    color: #1db954;
-    background: #1a1a1a;
+    color: var(--accent);
+    background: var(--accent-dim);
 }
 
 .tab:hover {
     color: #fff;
+}
+
+.tab.active:hover {
+    color: var(--accent-bright);
 }
 
 .results {
@@ -165,25 +257,31 @@ header h1 {
 }
 
 .song-card, .artist-card, .album-card {
-    background: #161616;
-    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 12px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.25s var(--ease), transform 0.25s var(--ease),
+                box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
     position: relative;
 }
 
 .song-card:hover, .artist-card:hover, .album-card:hover {
-    background: #282828;
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
 }
 
 .song-card img, .artist-card img, .album-card img {
     width: 100%;
     aspect-ratio: 1;
     object-fit: cover;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
     background: #282828;
+    box-shadow: var(--shadow-sm);
 }
 
 .artist-card img {
@@ -623,9 +721,12 @@ header h1 {
     bottom: 0;
     left: 0;
     right: 0;
-    background: #181818;
-    border-top: 1px solid #282828;
-    padding: 12px 24px;
+    background: rgba(20, 20, 20, 0.72);
+    backdrop-filter: saturate(1.4) blur(22px);
+    -webkit-backdrop-filter: saturate(1.4) blur(22px);
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+    padding: 14px 24px;
     display: flex;
     align-items: center;
     gap: 16px;
@@ -644,10 +745,16 @@ header h1 {
 .player-info img {
     width: 56px;
     height: 56px;
-    border-radius: 6px;
+    border-radius: var(--radius-sm);
     object-fit: cover;
     background: #282828;
     flex-shrink: 0;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.2s var(--ease);
+}
+
+.player-info:hover img {
+    transform: scale(1.04);
 }
 
 .player-title {
@@ -840,17 +947,24 @@ header h1 {
     flex: 1;
     -webkit-appearance: none;
     height: 4px;
-    background: #333;
-    border-radius: 2px;
+    background: #3a3a3a;
+    border-radius: 999px;
     outline: none;
     cursor: pointer;
+    transition: height 0.15s var(--ease);
+}
+
+.player-progress:hover input[type="range"] {
+    height: 6px;
 }
 
 .player-progress input[type="range"]::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
-    background: #1db954;
+    width: 13px;
+    height: 13px;
+    background: var(--accent);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
     border-radius: 50%;
     cursor: pointer;
     opacity: 0;
@@ -1013,10 +1127,16 @@ header h1 {
 .np-thumb {
     width: 340px;
     height: 340px;
-    border-radius: 14px;
+    border-radius: 16px;
     object-fit: cover;
     background: #1c1c22;
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7);
+    animation: npArtIn 0.5s var(--ease);
+}
+
+@keyframes npArtIn {
+    from { transform: scale(0.94); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
 }
 
 .np-title {
@@ -1028,7 +1148,7 @@ header h1 {
 
 .np-artist {
     font-size: 1.05rem;
-    color: #fa233b;
+    color: var(--accent);
     text-align: center;
     cursor: default;
     transition: text-decoration 0.15s;
@@ -1054,7 +1174,7 @@ header h1 {
 }
 
 .np-album[style*="cursor"]:hover {
-    color: #fa233b;
+    color: var(--accent);
     text-decoration: underline;
 }
 
@@ -1124,11 +1244,11 @@ header h1 {
 }
 
 .np-controls .ctrl-btn.np-toggle.active {
-    color: #fa233b;
+    color: var(--accent);
 }
 
 .np-controls .ctrl-btn.np-toggle.repeat-one {
-    color: #fa233b;
+    color: var(--accent);
     position: relative;
 }
 
@@ -1139,7 +1259,7 @@ header h1 {
     right: -2px;
     font-size: 0.6rem;
     font-weight: 700;
-    color: #fa233b;
+    color: var(--accent);
 }
 
 .np-controls .play-btn {
@@ -1179,7 +1299,7 @@ header h1 {
 }
 
 .np-action-btn.active {
-    color: #fa233b;
+    color: var(--accent);
 }
 
 .np-volume {
@@ -1452,19 +1572,26 @@ header h1 {
 }
 
 .login-card {
-    background: #161616;
-    border-radius: 12px;
-    padding: 40px;
+    background: linear-gradient(180deg, #181818, #131313);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 44px 40px;
     width: 100%;
     max-width: 400px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-lg);
 }
 
 .login-logo {
-    font-size: 2rem;
-    color: #1db954;
+    font-size: 2.1rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
     text-align: center;
     margin-bottom: 8px;
+    background: linear-gradient(120deg, var(--accent-bright), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: var(--accent);
 }
 
 .login-subtitle {
@@ -1925,23 +2052,24 @@ header h1 {
 .nav-btn {
     padding: 10px 20px;
     background: transparent;
-    color: #888;
-    border: none;
-    border-radius: 8px;
+    color: var(--text-dim);
+    border: 1px solid transparent;
+    border-radius: 999px;
     cursor: pointer;
     font-size: 0.95rem;
-    font-weight: 500;
-    transition: all 0.2s;
+    font-weight: 600;
+    transition: color 0.2s, background 0.2s, border-color 0.2s;
 }
 
 .nav-btn:hover {
     color: #fff;
-    background: #1a1a1a;
+    background: var(--surface-2);
 }
 
 .nav-btn.active {
-    color: #fff;
-    background: #282828;
+    color: var(--accent);
+    background: var(--accent-dim);
+    border-color: var(--accent-soft);
 }
 
 /* === Home View === */
@@ -2007,6 +2135,19 @@ header h1 {
     font-size: 1.2rem;
     font-weight: 700;
     color: #fff;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.home-section-header h3::before {
+    content: "";
+    width: 4px;
+    height: 18px;
+    border-radius: 999px;
+    background: linear-gradient(var(--accent-bright), var(--accent));
+    flex-shrink: 0;
 }
 
 .home-section-header .section-subtitle {
@@ -2038,16 +2179,21 @@ header h1 {
 }
 
 .mix-card {
-    background: #161616;
-    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 12px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.25s var(--ease), transform 0.25s var(--ease),
+                box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
     position: relative;
 }
 
 .mix-card:hover {
-    background: #282828;
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
 }
 
 .mix-card:hover .mix-play-btn {
@@ -2059,9 +2205,10 @@ header h1 {
     width: 100%;
     aspect-ratio: 1;
     object-fit: cover;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
     background: #282828;
+    box-shadow: var(--shadow-sm);
 }
 
 .mix-card .mix-title {
@@ -2177,26 +2324,32 @@ header h1 {
 }
 
 .suggestion-card {
-    background: #161616;
-    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
     padding: 12px;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background 0.25s var(--ease), transform 0.25s var(--ease),
+                box-shadow 0.25s var(--ease), border-color 0.25s var(--ease);
     text-align: center;
     position: relative;
 }
 
 .suggestion-card:hover {
-    background: #282828;
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
 }
 
 .suggestion-card img {
     width: 100%;
     aspect-ratio: 1;
     object-fit: cover;
-    border-radius: 6px;
-    margin-bottom: 10px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
     background: #282828;
+    box-shadow: var(--shadow-sm);
 }
 
 .suggestion-card .card-title {
