@@ -13,6 +13,8 @@ HOT_HITS_PLAYLISTS = [
      "playlist_id": "VLRDCLAK5uy_nTbyVypdXPQd00z15bTWjZr7pG-26yyQ4"},
     {"key": "malayalam", "name": "Hot Hits Malayalam",
      "playlist_id": "VLRDCLAK5uy_lXm4Xn4GwyFVjP0xgJvoZ6cdeBJZUmgSw"},
+    {"key": "telugu", "name": "Hot Hits Telugu",
+     "playlist_id": "VLRDCLAK5uy_lyVnWI5JnuwKJiuE-n1x-Un0mj9WlEyZw"},
     {"key": "english", "name": "Hot Hits English",
      "playlist_id": "VLRDCLAK5uy_nmS3YoxSwVVQk9lEQJ0UX4ZCjXsW_psU8"},
 ]

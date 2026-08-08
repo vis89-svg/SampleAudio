@@ -38,6 +38,7 @@ _HOT_HITS_BY_REGION = {
     "hindi": "bollywood",
     "tamil": "tamil",
     "malayalam": "malayalam",
+    "telugu": "telugu",
 }
 
 _index_cache: dict[str, tuple[float, dict]] = {}

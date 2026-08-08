@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.search import search_songs, search_artists, search_albums, search_all
 from api.search import get_artist, get_album, get_song_details, get_recommendations
-from api.search import get_artist_all_songs, get_artist_all_albums
+from api.search import get_artist_all_songs, get_artist_all_albums, get_artist_shuffle
 from api.downloader import (download_audio, get_audio_path, download_flac,
                             find_audio_file, start_streaming_download,
                             active_downloads, get_saavn_id,
@@ -87,7 +87,8 @@ def api_artist_songs(browse_id: str, user: dict | None = Depends(get_optional_us
 def api_artist_albums(browse_id: str):
     try:
         artist = get_artist(browse_id)
-        return {"albums": artist.get("albums", [])}
+        albums = get_artist_all_albums(browse_id, artist.get("albums_params", ""))
+        return {"albums": albums, "total": len(albums)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -105,6 +106,16 @@ def api_artist_playlists(browse_id: str):
 def api_artist_radio(browse_id: str):
     try:
         return {"tracks": get_artist_radio(browse_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/artist/{browse_id}/shuffle")
+def api_artist_shuffle(browse_id: str):
+    try:
+        artist = get_artist(browse_id)
+        tracks = get_artist_shuffle(artist.get("shuffle_id", ""))
+        return {"tracks": tracks}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

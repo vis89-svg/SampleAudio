@@ -319,6 +319,41 @@ def get_artist_radio(browse_id: str, limit: int = 50) -> list[dict]:
     return results[:limit]
 
 
+def get_artist_shuffle(shuffle_id: str, limit: int = 100) -> list[dict]:
+    """Shuffled artist song mix via the page's shuffleId (an RDAO watch playlist)."""
+    with _radio_lock:
+        cached = _radio_cache.get(("shuffle", shuffle_id))
+        if cached and time.time() - cached[0] < RADIO_CACHE_TTL:
+            return cached[1][:limit]
+
+    results = []
+    if shuffle_id:
+        try:
+            watch = _get_ytmusic().get_watch_playlist(playlistId=shuffle_id, limit=limit)
+        except Exception:
+            watch = {}
+        for t in watch.get("tracks", []):
+            if not t.get("videoId"):
+                continue
+            artists_list = t.get("artists", [])
+            album = t.get("album", {}) or {}
+            results.append({
+                "id": t.get("videoId", ""),
+                "title": t.get("title", ""),
+                "artist": ", ".join(a.get("name", "") for a in artists_list),
+                "artist_id": artists_list[0].get("id", "") if artists_list else "",
+                "album": album.get("name", ""),
+                "album_id": album.get("id", ""),
+                "duration": t.get("duration", ""),
+                "duration_seconds": t.get("duration_seconds", 0),
+                "thumbnail": _thumb_url(t.get("thumbnail", [])),
+                "url": f"https://music.youtube.com/watch?v={t.get('videoId', '')}",
+            })
+    with _radio_lock:
+        _radio_cache[("shuffle", shuffle_id)] = (time.time(), results)
+    return results[:limit]
+
+
 def get_playlist(browse_id: str, limit: int = 500) -> dict:
     """Any playlist by browse id, cached."""
     with _playlist_lock:
@@ -442,6 +477,7 @@ def get_artist(browse_id: str, user_id: int | None = None) -> dict:
         "subscribers": artist.get("subscribers", "") or "",
         "monthly_listeners": artist.get("monthlyListeners", "") or "",
         "radio_id": artist.get("radioId", "") or "",
+        "shuffle_id": artist.get("shuffleId", "") or "",
         "top_songs": _attach_play_counts(top_songs, user_id),
         "albums": albums,
         "singles": singles,
@@ -487,24 +523,66 @@ def get_artist_all_songs(browse_id: str, user_id: int | None = None) -> list[dic
 
 
 def get_artist_all_albums(channel_id: str, params: str) -> list[dict]:
-    """Fetch ALL albums for an artist using get_artist_albums."""
+    """Fetch ALL releases for an artist (albums, singles, EPs) in YTM's order."""
     if not params or not channel_id:
         return []
+    with _artist_page_lock:
+        cached = _artist_page_cache.get(("albums", channel_id))
+        if cached and time.time() - cached[0] < ARTIST_PAGE_CACHE_TTL:
+            return cached[1]
     yt = _get_ytmusic()
+    albums = []
+    seen = set()
+
+    def _parse_grid(grid: dict) -> str:
+        """Parse musicTwoRowItemRenderer items from a grid; returns next continuation token or ''."""
+        for item in grid.get("items", []):
+            r = item.get("musicTwoRowItemRenderer") or {}
+            title = ""
+            truns = r.get("title", {}).get("runs") or []
+            if truns:
+                title = truns[0].get("text", "")
+            bid = r.get("navigationEndpoint", {}).get("browseEndpoint", {}).get("browseId", "")
+            if title and bid and bid not in seen:
+                seen.add(bid)
+                subtitle = " ".join(x.get("text", "") for x in (r.get("subtitle", {}).get("runs") or []) if x.get("text", "").strip())
+                year = ""
+                typ = ""
+                for part in (p.strip() for p in subtitle.split("\u2022")):
+                    if part.isdigit() and len(part) == 4:
+                        year = part
+                    elif part:
+                        typ = part
+                albums.append({
+                    "id": bid,
+                    "title": title,
+                    "year": year,
+                    "type": typ,
+                    "thumbnail": _thumb_url(r.get("thumbnailRenderer", {}).get("musicThumbnailRenderer", {}).get("thumbnail", {}).get("thumbnails", [])),
+                })
+        conts = grid.get("continuations") or []
+        if conts:
+            return conts[0].get("nextContinuationData", {}).get("continuation", "")
+        return ""
+
     try:
-        albums_raw = yt.get_artist_albums(channel_id, params, limit=200)
-        albums = []
-        for a in albums_raw:
-            albums.append({
-                "id": a.get("browseId", ""),
-                "title": a.get("title", ""),
-                "year": a.get("year", ""),
-                "type": a.get("type", ""),
-                "thumbnail": _thumb_url(a.get("thumbnails", [])),
-            })
-        return albums
+        raw = yt._send_request(endpoint="browse", body={"browseId": "MPAD" + channel_id, "params": params})
+        grid = raw["contents"]["singleColumnBrowseResultsRenderer"]["tabs"][0]["tabRenderer"]["content"]["sectionListRenderer"]["contents"][0]["gridRenderer"]
+        token = _parse_grid(grid)
+        for _ in range(20):
+            if not token or len(albums) >= 400:
+                break
+            cont_resp = yt._send_request(endpoint="browse", body={"continuation": token})
+            cc = cont_resp.get("continuationContents", {})
+            g2 = cc.get("gridContinuation") or cc.get("musicGridContinuation")
+            if not g2:
+                break
+            token = _parse_grid(g2)
     except Exception:
-        return []
+        pass
+    with _artist_page_lock:
+        _artist_page_cache[("albums", channel_id)] = (time.time(), albums)
+    return albums
 
 
 def get_song_details(video_id: str) -> dict:

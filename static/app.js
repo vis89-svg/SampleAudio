@@ -119,7 +119,7 @@ let playHistory = [];
 let historyNavigating = false;
 let songCompleted = false;
 let songStartTime = 0;
-let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [], genres: [], genrePersonalized: false };
+let homeFeedData = { recent: [], mixes: [], discovery: null, because: [], albums: [], artists: [], charts: [], hotHits: [], chartsAndHits: [], genres: [], genrePersonalized: false };
 let homeFeedExpanded = new Set();
 const ALBUM_LIMIT = 6;
 const ARTIST_LIMIT = 6;
@@ -581,6 +581,7 @@ function switchTab(tab) {
 let artistData = null;
 let artistSection = 'most';
 let artistAllSongs = null;
+let artistAllAlbums = null;
 
 function upsizeThumb(url) {
     if (!url) return '';
@@ -649,6 +650,7 @@ async function openArtist(browseId) {
         artistData.playlists = extras;
         artistSection = 'most';
         artistAllSongs = null;
+        artistAllAlbums = null;
 
         queue = data.top_songs || [];
         queueSource = 'other';
@@ -692,7 +694,12 @@ function renderArtistView() {
             .slice(0, 12);
         content = `<div class="section-title">Recently Released</div>${albumGrid(recent)}`;
     } else if (artistSection === 'albums') {
-        content = `<div class="section-title">Albums</div>${albumGrid(d.albums || [])}`;
+        const shown = d.albums || [];
+        content = `
+            <div class="section-title">Albums</div>
+            ${albumGrid(shown)}
+            ${d.albums_params ? `<button class="see-more-btn" onclick="openArtistAlbumsView()">See More &darr;</button>` : ''}
+        `;
     } else if (artistSection === 'playlists') {
         const featured = (d.playlists && d.playlists.featured) || [];
         const byArtist = (d.playlists && d.playlists.by_artist) || [];
@@ -735,6 +742,7 @@ function renderArtistView() {
                     ${monthly ? `<div class="artist-banner-sub">${monthly}</div>` : ''}
                     <div class="artist-banner-buttons">
                         ${topSongs.length ? `<button class="mix-play-btn" onclick="playSong(0)">&#9654; Play</button>` : ''}
+                        <button class="artist-radio-btn" onclick="shuffleArtistSongs()">&#128257; Shuffle</button>
                         <button class="artist-radio-btn" onclick="playArtistRadio()">&#9658; Radio</button>
                     </div>
                 </div>
@@ -871,6 +879,62 @@ function closeArtistSongsView() {
     queue = artistData.top_songs || [];
     queueSource = 'other';
     renderArtistView();
+}
+
+async function openArtistAlbumsView() {
+    if (!artistData) return;
+    artistView.classList.add("hidden");
+    artistSongsView.classList.remove("hidden");
+    artistSongsView.innerHTML = `<div class="loading">Loading discography...</div>`;
+
+    if (!artistAllAlbums) {
+        try {
+            const resp = await authFetch(`/api/artist/${artistData.id}/albums`);
+            if (!resp.ok) throw new Error("failed");
+            const data = await resp.json();
+            artistAllAlbums = data.albums || [];
+        } catch (e) {
+            artistSongsView.innerHTML = `<div class="empty-state">Failed to load albums</div>`;
+            return;
+        }
+    }
+    const albums = artistAllAlbums;
+    if (!albums.length) {
+        artistSongsView.innerHTML = `<div class="empty-state">No albums found</div>`;
+        return;
+    }
+    artistSongsView.innerHTML = `
+        <button class="back-btn" onclick="closeArtistSongsView()">&larr; Back</button>
+        <div class="artist-header">
+            <div>
+                <h2>Discography</h2>
+                <div style="color:#888;margin-top:4px">${esc(artistData.name)} &middot; ${albums.length} releases</div>
+            </div>
+        </div>
+        ${albumGrid(albums)}
+    `;
+}
+
+async function shuffleArtistSongs() {
+    if (!artistData) return;
+    let tracks = null;
+    if (artistData.shuffle_id) {
+        try {
+            const resp = await authFetch(`/api/artist/${artistData.id}/shuffle`);
+            if (resp.ok) {
+                const d = await resp.json();
+                tracks = d.tracks || [];
+            }
+        } catch (e) {}
+    }
+    if (!tracks || !tracks.length) {
+        tracks = [...(artistData.top_songs || [])].sort(() => Math.random() - 0.5);
+    }
+    if (!tracks.length) return;
+    queue = tracks;
+    queueSource = 'other';
+    enqueueMixTracks(queue.slice(1));
+    playSong(0);
 }
 
 async function playArtistRadio() {
@@ -2042,6 +2106,12 @@ async function fetchHomeFeed() {
     homeFeedData.artists = artists.artists || [];
     homeFeedData.charts = charts.charts || [];
     homeFeedData.hotHits = hotHits.hits || [];
+    const mergedByKey = {};
+    [...homeFeedData.charts, ...homeFeedData.hotHits].forEach(c => { mergedByKey[c.key] = c; });
+    const CHART_HITS_ORDER = ["top50_global", "top50_india", "bollywood", "malayalam", "tamil", "telugu", "top100_billboard", "top_songs_global", "top_songs_india", "english"];
+    const merged = [];
+    CHART_HITS_ORDER.forEach(k => { if (mergedByKey[k]) { merged.push(mergedByKey[k]); delete mergedByKey[k]; } });
+    homeFeedData.chartsAndHits = [...merged, ...Object.values(mergedByKey)];
     homeFeedData.genres = genres.genres || [];
     homeFeedData.genrePersonalized = !!genres.personalized;
     homeFeedExpanded.clear();
@@ -2052,16 +2122,12 @@ async function fetchHomeFeed() {
         html += renderGenreSection(false);
     }
 
-    if (homeFeedData.hotHits.length) {
-        html += renderHotHitsSection(false);
+    if (homeFeedData.chartsAndHits.length) {
+        html += renderChartsHitsSection(false);
     }
 
     if (homeFeedData.mixes.length) {
         html += renderDailyMixesSection(false);
-    }
-
-    if (homeFeedData.charts.length) {
-        html += renderChartsSection(false);
     }
 
     if (homeFeedData.recent.length) {
@@ -2156,8 +2222,7 @@ function sectionHTML(key) {
         case "recent": return renderRecentlyPlayedSection(expanded);
         case "daily": return renderDailyMixesSection(expanded);
         case "genres": return renderGenreSection(expanded);
-        case "hot_hits": return renderHotHitsSection(expanded);
-        case "charts": return renderChartsSection(expanded);
+        case "charts_hits": return renderChartsHitsSection(expanded);
         case "discovery": return renderDiscoveryMixSection(expanded);
         case "because": return renderBecauseYouLikedSection(expanded);
         case "albums": return renderAlbumSuggestionsSection(expanded);
@@ -2265,53 +2330,22 @@ function renderGenreSection(expanded) {
     return html + `</div>`;
 }
 
-function renderHotHitsSection(expanded) {
-    const hits = homeFeedData.hotHits;
-    if (!hits.length) return "";
-    let html = `<div class="home-section" id="sec_hot_hits">${sectionHeader("&#128293; Hot Hits", "", "hot_hits", expanded)}`;
-    if (!expanded) {
-        html += `<div class="mix-grid">`;
-        hits.forEach((c, i) => {
-            html += `
-                <div class="mix-card" onclick="openMixDetail('hot_hits', ${i})">
-                    <img src="${mixThumb(c)}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMixTrack('hot_hits', ${i}, 0)">&#9654;</button>
-                    <div class="mix-title">${esc(c.name)}</div>
-                    <div class="mix-subtitle">${c.tracks.length} tracks</div>
-                </div>`;
-        });
-        html += `</div>`;
-    } else {
-        hits.forEach((c, i) => {
-            html += `<div class="mix-track-section-title">${esc(c.name)} &middot; ${c.tracks.length} tracks</div>`;
-            html += (c.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('hot_hits', ${i}, ${j})`)).join("");
-        });
-    }
-    return html + `</div>`;
-}
-
-function renderChartsSection(expanded) {
-    const charts = homeFeedData.charts;
-    if (!charts.length) return "";
-    let html = `<div class="home-section" id="sec_charts">${sectionHeader("&#127881; Charts", "", "charts", expanded)}`;    if (!expanded) {
-        html += `<div class="mix-grid">`;
-        charts.forEach((c, i) => {
-            html += `
-                <div class="mix-card" onclick="openMixDetail('charts', ${i})">
-                    <img src="${mixThumb(c)}" alt="" loading="lazy" onerror="this.style.background='#333'">
-                    <button class="mix-play-btn" onclick="event.stopPropagation(); playMixTrack('charts', ${i}, 0)">&#9654;</button>
-                    <div class="mix-title">${esc(c.name)}</div>
-                    <div class="mix-subtitle">${c.tracks.length} tracks</div>
-                </div>`;
-        });
-        html += `</div>`;
-    } else {
-        charts.forEach((c, i) => {
-            html += `<div class="mix-track-section-title">${esc(c.name)} &middot; ${c.tracks.length} tracks</div>`;
-            html += (c.tracks || []).map((t, j) => songRowHTML(t, `playMixTrack('charts', ${i}, ${j})`)).join("");
-        });
-    }
-    return html + `</div>`;
+function renderChartsHitsSection(expanded) {
+    const items = homeFeedData.chartsAndHits;
+    if (!items.length) return "";
+    let html = `<div class="home-section" id="sec_charts_hits">${sectionHeader("&#128293;&#127881; Hot Hits & Charts", "Top charts & trending hits", "charts_hits", expanded)}<div class="mix-grid">`;
+    items.forEach((c, i) => {
+        if (!expanded && i >= 6) return;
+        html += `
+            <div class="mix-card" onclick="openMixDetail('charts_hits', ${i})">
+                <img src="${mixThumb(c)}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                <button class="mix-play-btn" onclick="event.stopPropagation(); playMixTrack('charts_hits', ${i}, 0)">&#9654;</button>
+                <div class="mix-title">${esc(c.name)}</div>
+                <div class="mix-subtitle">${c.tracks.length} tracks</div>
+            </div>`;
+    });
+    html += `</div></div>`;
+    return html;
 }
 
 function renderDiscoveryMixSection(expanded) {
@@ -2421,11 +2455,8 @@ function playMixTrack(type, mixIndex, trackIndex) {
     } else if (type === 'because') {
         const s = homeFeedData.because[mixIndex];
         if (s) tracks = s.tracks;
-    } else if (type === 'charts') {
-        const c = homeFeedData.charts[mixIndex];
-        if (c) tracks = c.tracks;
-    } else if (type === 'hot_hits') {
-        const c = homeFeedData.hotHits[mixIndex];
+    } else if (type === 'charts_hits') {
+        const c = homeFeedData.chartsAndHits[mixIndex];
         if (c) tracks = c.tracks;
     } else if (type === 'genres') {
         const c = homeFeedData.genres[mixIndex];
@@ -2433,7 +2464,7 @@ function playMixTrack(type, mixIndex, trackIndex) {
     }
     if (!tracks || !tracks.length) return;
     queue = tracks;
-    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : type === 'charts' ? 'charts' : type === 'hot_hits' ? 'hot-hits' : type === 'genres' ? 'genres' : 'because-liked');
+    queueSource = (type === 'daily' ? 'daily-mix' : type === 'discovery' ? 'discovery' : type === 'charts' || type === 'charts_hits' ? 'charts' : type === 'hot_hits' ? 'hot-hits' : type === 'genres' ? 'genres' : 'because-liked');
     enqueueMixTracks(queue.slice(1));
     playSong(trackIndex);
 }
@@ -2459,17 +2490,11 @@ function openMixDetail(type, mixIndex) {
         title = s.seed_title || "Because You Liked";
         subtitle = "Suggested by your likes";
         tracks = s.tracks || [];
-    } else if (type === 'charts') {
-        const c = homeFeedData.charts[mixIndex];
+    } else if (type === 'charts_hits') {
+        const c = homeFeedData.chartsAndHits[mixIndex];
         if (!c) return;
-        title = c.name || "Charts";
-        subtitle = "YouTube Music Charts";
-        tracks = c.tracks || [];
-    } else if (type === 'hot_hits') {
-        const c = homeFeedData.hotHits[mixIndex];
-        if (!c) return;
-        title = c.name || "Hot Hits";
-        subtitle = "Trending hits, updated regularly";
+        title = c.name || "Hot Hits & Charts";
+        subtitle = "Top charts & trending hits";
         tracks = c.tracks || [];
     } else if (type === 'genres') {
         const c = homeFeedData.genres[mixIndex];
