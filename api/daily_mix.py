@@ -120,7 +120,8 @@ def generate_daily_mix(user_id: int, num_mixes: int = DAILY_MIX_COUNT) -> list[d
         used_artists.update(cluster_artists)
 
         familiar = _get_familiar_tracks(cluster_artists, scored_by_artist, recently_played_ids, limit=20)
-        related = _get_related_tracks(user_id, cluster_artists, recently_played_ids, limit=3)
+        related = _get_related_tracks(user_id, cluster_artists, recently_played_ids, limit=3,
+                                      scored_by_artist=scored_by_artist)
         emerging = _get_emerging_tracks(user_id, cluster_artists, scored_by_artist, limit=2)
 
         tracks = _deduplicate_tracks(familiar + related + emerging)
@@ -165,7 +166,8 @@ def generate_discovery_mix(user_id: int) -> dict:
         all_cluster_artists.extend(c.get("centroid", {}).get("top_artists", []))
 
     familiar = _get_familiar_tracks(all_cluster_artists[:10], scored_by_artist, recently_played_ids, limit=18)
-    related = _get_related_tracks(user_id, all_cluster_artists[:10], recently_played_ids, limit=10)
+    related = _get_related_tracks(user_id, all_cluster_artists[:10], recently_played_ids, limit=10,
+                                  scored_by_artist=scored_by_artist)
 
     tracks = _deduplicate_tracks(familiar + related)
     tracks = tracks[:MIX_SIZE]
@@ -403,19 +405,49 @@ def _get_familiar_tracks(artist_ids: list, scored_by_artist: dict,
 
 
 def _get_related_tracks(user_id: int, artist_ids: list,
-                        exclude_ids: set, limit: int = 10) -> list[dict]:
-    """Get tracks from related artists using transition data."""
+                        exclude_ids: set, limit: int = 10,
+                        scored_by_artist: dict | None = None) -> list[dict]:
+    """Get real tracks from related artists using transition data.
+
+    Prefers songs the user has already played (they carry full metadata);
+    otherwise fetches the related artist's top song so mixes never contain
+    empty placeholder tracks."""
     tracks = []
+    seen_vids = set(exclude_ids)
     for aid in artist_ids:
         transitions = get_artist_transitions(user_id, aid)
         for t in transitions:
-            if t["to_artist_id"] and t["to_artist_id"] not in [a for a in artist_ids]:
-                tracks.append({
-                    "video_id": f"transition_{t['to_artist_id']}",
-                    "artist_id": t["to_artist_id"],
-                    "score": t["transition_count"],
-                    "source": "transition",
-                })
+            to_aid = t["to_artist_id"]
+            if not to_aid or to_aid in [a for a in artist_ids]:
+                continue
+            song = None
+            if scored_by_artist:
+                played = scored_by_artist.get(to_aid, [])
+                if played:
+                    song = sorted(played, key=lambda s: s.get("score", 0), reverse=True)[0]
+            if song is None:
+                try:
+                    artist_data = get_artist(to_aid)
+                    top = (artist_data.get("top_songs") or [])[:1]
+                    if top:
+                        s = top[0]
+                        song = {
+                            "video_id": s.get("id", s.get("videoId", "")),
+                            "title": s.get("title", ""),
+                            "artist": s.get("artist", artist_data.get("name", "")),
+                            "artist_id": s.get("artist_id", to_aid),
+                            "album": s.get("album", ""),
+                            "album_id": s.get("album_id", ""),
+                            "duration": s.get("duration", ""),
+                            "duration_seconds": s.get("duration_seconds", 0),
+                            "thumbnail": s.get("thumbnail", ""),
+                            "score": t["transition_count"],
+                        }
+                except Exception:
+                    song = None
+            if song and song.get("video_id") and song["video_id"] not in seen_vids:
+                seen_vids.add(song["video_id"])
+                tracks.append(song)
                 if len(tracks) >= limit:
                     return tracks
     return tracks
