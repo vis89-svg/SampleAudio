@@ -5,6 +5,7 @@ let resultsDiv = null;
 let tabsDiv = null;
 let artistView = null;
 let albumView = null;
+let artistSongsView = null;
 let playerDiv = null;
 
 function cacheDomElements() {
@@ -14,6 +15,7 @@ function cacheDomElements() {
     tabsDiv = document.getElementById("tabs");
     artistView = document.getElementById("artistView");
     albumView = document.getElementById("albumView");
+    artistSongsView = document.getElementById("artistSongsView");
     playerDiv = document.getElementById("player");
 }
 
@@ -205,6 +207,7 @@ async function authFetch(url, options = {}) {
 function showProfilePage() {
     tabsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
     resultsDiv.classList.remove("hidden");
     resultsDiv.innerHTML = `<div class="loading">Loading your profile...</div>`;
@@ -354,6 +357,7 @@ function viewLikes() {
     if (!authToken) return showCleanNoInfo("Login required");
     tabsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
     resultsDiv.classList.remove("hidden");
     resultsDiv.innerHTML = `<div class="loading">Loading your likes...</div>`;
@@ -396,6 +400,7 @@ function viewHistory() {
     if (!authToken) return showCleanNoInfo("Login required");
     tabsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
     resultsDiv.classList.remove("hidden");
     resultsDiv.innerHTML = `<div class="loading">Loading your history...</div>`;
@@ -438,6 +443,7 @@ function viewFollowedArtists() {
     if (!authToken) return showCleanNoInfo("Login required");
     tabsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
     resultsDiv.classList.remove("hidden");
     resultsDiv.innerHTML = `<div class="loading">Loading followed artists...</div>`;
@@ -506,6 +512,7 @@ async function doSearch() {
 function renderResults(data) {
     tabsDiv.classList.remove("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
     resultsDiv.classList.remove("hidden");
 
@@ -627,6 +634,7 @@ async function openArtist(browseId) {
     tabsDiv.classList.add("hidden");
     resultsDiv.classList.add("hidden");
     albumView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     artistView.classList.remove("hidden");
 
     try {
@@ -676,7 +684,7 @@ function renderArtistView() {
         content = `
             <div class="section-title">Most Played</div>
             ${artistSongRows(shown, 'playSong')}
-            ${(d.total_songs && d.total_songs > shown.length) ? `<button class="see-more-btn" onclick="seeAllArtistSongs()">See More &darr;</button>` : ''}
+            ${d.songs_browse_id ? `<button class="see-more-btn" onclick="openArtistSongsView('popular')">See More &darr;</button>` : ''}
         `;
     } else if (artistSection === 'recent') {
         const recent = (d.singles || []).concat(d.albums || [])
@@ -757,9 +765,10 @@ function featuringHtml() {
     if (!artistData || !artistData.featuring || !artistData.featuring.length) return '';
     const d = artistData;
     const tracks = d.featuring;
+    const shown = tracks.slice(0, 8);
     return `
         <div class="section-title" style="margin-top:24px">Songs Featuring ${esc(d.name)}</div>
-        ${tracks.map((t, i) => `
+        ${shown.map((t, i) => `
             <div class="song-row" onclick="playFeaturingTrack(${i})">
                 <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
                 <div class="info">
@@ -770,6 +779,7 @@ function featuringHtml() {
                 ${kebabBtn(t)}
             </div>
         `).join("")}
+        ${tracks.length > shown.length ? `<button class="see-more-btn" onclick="openArtistSongsView('featuring')">See More &darr;</button>` : ''}
     `;
 }
 
@@ -785,27 +795,82 @@ function artistTab(tab) {
     renderArtistView();
 }
 
-async function seeAllArtistSongs() {
+async function openArtistSongsView(mode) {
     if (!artistData) return;
-    if (!artistAllSongs) {
-        const resp = await authFetch(`/api/artist/${artistData.id}/songs`);
-        if (!resp.ok) return;
-        const data = await resp.json();
-        artistAllSongs = data.songs || [];
+    artistView.classList.add("hidden");
+    artistSongsView.classList.remove("hidden");
+    artistSongsView.innerHTML = `<div class="loading">Loading...</div>`;
+
+    if (mode === 'popular') {
+        if (!artistAllSongs) {
+            try {
+                const resp = await authFetch(`/api/artist/${artistData.id}/songs`);
+                if (!resp.ok) throw new Error("failed");
+                const data = await resp.json();
+                artistAllSongs = data.songs || [];
+            } catch (e) {
+                artistSongsView.innerHTML = `<div class="empty-state">Failed to load songs</div>`;
+                return;
+            }
+        }
+        const tracks = artistAllSongs;
+        if (!tracks.length) {
+            artistSongsView.innerHTML = `<div class="empty-state">No songs found</div>`;
+            return;
+        }
+        queue = tracks;
+        queueSource = 'other';
+        artistSongsView.innerHTML = `
+            <button class="back-btn" onclick="closeArtistSongsView()">&larr; Back</button>
+            <div class="artist-header">
+                <div>
+                    <h2>Most Played</h2>
+                    <div style="color:#888;margin-top:4px">${esc(artistData.name)} &middot; ${tracks.length} songs</div>
+                </div>
+                <button class="mix-play-btn" onclick="playSong(0)" title="Play all">&#9654; Play</button>
+            </div>
+            <div class="section-title">All Songs</div>
+            ${artistSongRows(tracks, 'playSong')}
+        `;
+    } else if (mode === 'featuring') {
+        const tracks = artistData.featuring || [];
+        if (!tracks.length) {
+            closeArtistSongsView();
+            return;
+        }
+        queue = tracks;
+        queueSource = 'other';
+        artistSongsView.innerHTML = `
+            <button class="back-btn" onclick="closeArtistSongsView()">&larr; Back</button>
+            <div class="artist-header">
+                <div>
+                    <h2>Songs Featuring ${esc(artistData.name)}</h2>
+                    <div style="color:#888;margin-top:4px">${tracks.length} songs</div>
+                </div>
+                <button class="mix-play-btn" onclick="playSong(0)" title="Play all">&#9654; Play</button>
+            </div>
+            <div class="section-title">Featuring ${esc(artistData.name)}</div>
+            ${tracks.map((t, i) => `
+                <div class="song-row" onclick="playSong(${i})">
+                    <img src="${t.thumbnail || ''}" alt="" loading="lazy" onerror="this.style.background='#333'">
+                    <div class="info">
+                        <div class="title">${esc(t.title || '')}</div>
+                        <div class="subtitle">${esc(t.artist || '')}</div>
+                    </div>
+                    <div class="duration">${t.duration || ''}</div>
+                    ${kebabBtn(t)}
+                </div>
+            `).join("")}
+        `;
     }
-    const songs = artistAllSongs;
-    document.getElementById("artistSectionContent").innerHTML = `
-        <button class="back-btn" style="margin-top:8px" onclick="artistTab('most')">&larr; Back</button>
-        <div class="section-title">All Songs &middot; ${songs.length}</div>
-        ${artistSongRows(songs, 'playArtistAllSong')}
-    `;
 }
 
-function playArtistAllSong(i) {
-    if (!artistAllSongs) return;
-    queue = artistAllSongs;
+function closeArtistSongsView() {
+    artistSongsView.classList.add("hidden");
+    artistView.classList.remove("hidden");
+    queue = artistData.top_songs || [];
     queueSource = 'other';
-    playSong(i);
+    renderArtistView();
 }
 
 async function playArtistRadio() {
@@ -874,6 +939,7 @@ async function openAlbum(browseId) {
     tabsDiv.classList.add("hidden");
     resultsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.remove("hidden");
 
     try {
@@ -912,6 +978,7 @@ async function openAlbum(browseId) {
 
 function backToResults() {
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
     if (mainContext === "home") {
         showHome();
@@ -1686,6 +1753,7 @@ function showLoading() {
     resultsDiv.classList.remove("hidden");
     tabsDiv.classList.add("hidden");
     artistView.classList.add("hidden");
+    if (artistSongsView) artistSongsView.classList.add("hidden");
     albumView.classList.add("hidden");
 }
 
